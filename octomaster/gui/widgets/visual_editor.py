@@ -354,19 +354,74 @@ class VisualEditor(QWidget):
     def zoom_in(self):
         """Zoom in the view."""
         self.view.scale(1.15, 1.15)
+        self.view.zoom_factor *= 1.15
+        logger.debug(f"Zoomed in: {self.view.zoom_factor:.2f}x")
 
     def zoom_out(self):
         """Zoom out the view."""
         self.view.scale(1 / 1.15, 1 / 1.15)
+        self.view.zoom_factor /= 1.15
+        logger.debug(f"Zoomed out: {self.view.zoom_factor:.2f}x")
+
+    def reset_zoom(self):
+        """Reset zoom to 100%."""
+        self.view.resetTransform()
+        self.view.zoom_factor = 1.0
+        logger.debug("Zoom reset to 100%")
 
     def zoom_fit(self):
         """Fit all items in view."""
         self.view.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        logger.debug("Fitted all items in view")
+
+    def select_all(self):
+        """Select all blocks."""
+        for item in self.scene.items():
+            if isinstance(item, BlockGraphicsItem):
+                item.setSelected(True)
+        logger.debug(f"Selected all {len(self.block_items)} blocks")
 
     def auto_layout(self):
-        """Auto-arrange blocks."""
-        # TODO: Implement auto-layout algorithm
-        logger.info("Auto-layout not implemented yet")
+        """Auto-arrange blocks in a grid."""
+        if not self.workflow.blocks:
+            return
+
+        # Simple grid layout
+        padding = 50
+        spacing_x = 220  # block width + spacing
+        spacing_y = 100  # block height + spacing
+        cols = 4
+
+        for i, block in enumerate(self.workflow.blocks):
+            row = i // cols
+            col = i % cols
+
+            block.x = padding + col * spacing_x
+            block.y = padding + row * spacing_y
+
+            if block.id in self.block_items:
+                item = self.block_items[block.id]
+                item.setPos(block.x, block.y)
+
+        self.workflow_changed.emit(self.workflow)
+        logger.info(f"Auto-arranged {len(self.workflow.blocks)} blocks")
+
+    def delete_selected(self):
+        """Delete selected blocks."""
+        selected_items = [
+            item for item in self.scene.selectedItems()
+            if isinstance(item, BlockGraphicsItem)
+        ]
+
+        for item in selected_items:
+            self.workflow.remove_block(item.block.id)
+            self.scene.removeItem(item)
+            if item.block.id in self.block_items:
+                del self.block_items[item.block.id]
+
+        if selected_items:
+            self.workflow_changed.emit(self.workflow)
+            logger.info(f"Deleted {len(selected_items)} blocks")
 
     def on_block_added(self, block: Block):
         """Handle block added."""
