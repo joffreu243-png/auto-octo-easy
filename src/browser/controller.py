@@ -1,216 +1,377 @@
 """
-Browser controller for managing browser automation.
+Browser controller for OctoMaster Pro.
 
-This module provides a unified interface for controlling browsers across
-different automation frameworks (Playwright, Selenium).
+Main browser controller integrating all browser components.
 """
 
-from typing import Optional, Any
-from enum import Enum
+from typing import Optional, Dict, Any, List
+from pathlib import Path
+import asyncio
 from loguru import logger
+
+from playwright.async_api import Page
+
+from src.browser.playwright_bridge import PlaywrightBridge
+from src.browser.actions import BrowserActions, ActionResult
+from src.browser.selector_engine import SelectorEngine
+from src.browser.cdp_client import CDPClient
+from src.browser.tab_manager import TabManager, TabInfo
+from src.browser.inspector import ElementInspector, ElementInfo
 from src.core.exceptions import BrowserError
 
 
-class BrowserType(str, Enum):
-    """Browser type enumeration."""
-
-    CHROMIUM = "chromium"
-    FIREFOX = "firefox"
-    WEBKIT = "webkit"
-    CHROME = "chrome"
-    EDGE = "edge"
-
-
 class BrowserController:
-    """
-    Browser controller for unified browser automation.
+    """Main browser controller integrating all browser components."""
 
-    Provides a common interface for different browser automation frameworks.
-    """
+    def __init__(self) -> None:
+        """Initialize browser controller."""
+        self.playwright = PlaywrightBridge()
+        self.tab_manager = TabManager()
+        self._actions: Optional[BrowserActions] = None
+        self._selector_engine: Optional[SelectorEngine] = None
+        self._cdp_client: Optional[CDPClient] = None
+        self._inspector: Optional[ElementInspector] = None
 
-    def __init__(
-        self,
-        browser_type: BrowserType = BrowserType.CHROMIUM,
-        headless: bool = False,
-    ) -> None:
-        """
-        Initialize browser controller.
-
-        Args:
-            browser_type: Type of browser to use
-            headless: Whether to run in headless mode
-        """
-        self.browser_type = browser_type
-        self.headless = headless
-        self.browser: Optional[Any] = None
-        self.page: Optional[Any] = None
-        self.is_running = False
-
-        logger.info(f"Browser controller initialized: {browser_type.value}, headless={headless}")
-
-    async def start(self) -> bool:
-        """
-        Start the browser.
+    @property
+    def is_running(self) -> bool:
+        """Check if browser is running.
 
         Returns:
-            True if started successfully, False otherwise
+            True if browser is running
+        """
+        return self.playwright.is_running
+
+    @property
+    def current_page(self) -> Optional[Page]:
+        """Get current active page.
+
+        Returns:
+            Current page or None
+        """
+        return self.tab_manager.active_tab
+
+    async def start(
+        self,
+        browser_type: str = "chromium",
+        headless: bool = False,
+        user_data_dir: Optional[Path] = None,
+        args: Optional[List[str]] = None,
+    ) -> bool:
+        """Start browser.
+
+        Args:
+            browser_type: Browser type (chromium, firefox, webkit)
+            headless: Run in headless mode
+            user_data_dir: User data directory for persistent context
+            args: Additional browser arguments
+
+        Returns:
+            True if started successfully
 
         Raises:
             BrowserError: If browser fails to start
         """
         try:
-            logger.info(f"Starting {self.browser_type.value} browser...")
+            logger.info(f"Starting browser ({browser_type})")
 
-            # TODO: Implement actual browser startup using Playwright or Selenium
-            # from playwright.async_api import async_playwright
-            # self.playwright = await async_playwright().start()
-            # self.browser = await self.playwright.chromium.launch(headless=self.headless)
-            # self.page = await self.browser.new_page()
+            # Start Playwright
+            success = await self.playwright.start(
+                browser_type=browser_type,
+                headless=headless,
+                user_data_dir=user_data_dir,
+                args=args,
+            )
 
-            self.is_running = True
+            if not success:
+                raise BrowserError("Failed to start browser")
+
+            # Get initial page
+            page = self.playwright.current_page
+            if page:
+                self.tab_manager.add_tab(page)
+                await self._initialize_page_components(page)
+
             logger.info("Browser started successfully")
             return True
 
         except Exception as e:
-            raise BrowserError(f"Failed to start browser: {e}", browser_type=self.browser_type.value) from e
+            logger.error(f"Browser start failed: {e}")
+            raise BrowserError(f"Failed to start browser: {e}")
 
     async def stop(self) -> None:
-        """Stop the browser."""
-        if not self.is_running:
-            return
-
+        """Stop browser and cleanup resources."""
         try:
-            logger.info("Stopping browser...")
+            logger.info("Stopping browser")
 
-            # TODO: Close browser properly
-            # if self.browser:
-            #     await self.browser.close()
-            # if self.playwright:
-            #     await self.playwright.stop()
+            # Cleanup components
+            if self._cdp_client:
+                await self._cdp_client.disconnect()
 
-            self.is_running = False
+            # Close all tabs
+            for page in self.tab_manager.tabs:
+                try:
+                    await page.close()
+                except Exception:
+                    pass
+
+            # Stop Playwright
+            await self.playwright.stop()
+
+            # Clear managers
+            self.tab_manager.clear()
+            self._actions = None
+            self._selector_engine = None
+            self._cdp_client = None
+            self._inspector = None
+
             logger.info("Browser stopped")
 
         except Exception as e:
-            logger.error(f"Error stopping browser: {e}")
+            logger.error(f"Browser stop error: {e}")
 
-    async def navigate(self, url: str, timeout: int = 30000) -> bool:
+    async def _initialize_page_components(self, page: Page) -> None:
+        """Initialize page-specific components.
+
+        Args:
+            page: Page to initialize components for
         """
-        Navigate to URL.
+        self._actions = BrowserActions(page)
+        self._selector_engine = SelectorEngine(page)
+        self._inspector = ElementInspector(page)
+        self._cdp_client = CDPClient(page)
+
+    # Navigation methods
+    async def navigate(self, url: str, wait_until: str = "domcontentloaded") -> ActionResult:
+        """Navigate to URL.
 
         Args:
             url: URL to navigate to
-            timeout: Navigation timeout in milliseconds
+            wait_until: When to consider navigation complete
 
         Returns:
-            True if navigation successful, False otherwise
+            ActionResult with navigation status
         """
-        try:
-            logger.info(f"Navigating to: {url}")
+        if not self._actions:
+            raise BrowserError("Browser not started")
 
-            # TODO: Implement actual navigation
-            # if self.page:
-            #     await self.page.goto(url, timeout=timeout)
+        return await self._actions.navigate(url, wait_until)
 
-            return True
+    async def go_back(self) -> None:
+        """Navigate back in history."""
+        page = self.current_page
+        if page:
+            await page.go_back()
 
-        except Exception as e:
-            logger.error(f"Navigation failed: {e}")
-            return False
+    async def go_forward(self) -> None:
+        """Navigate forward in history."""
+        page = self.current_page
+        if page:
+            await page.go_forward()
 
-    async def click(self, selector: str, timeout: int = 10000) -> bool:
-        """
-        Click an element.
+    async def reload(self) -> None:
+        """Reload current page."""
+        page = self.current_page
+        if page:
+            await page.reload()
+
+    # Action methods
+    async def click(self, selector: str, **kwargs) -> ActionResult:
+        """Click element.
 
         Args:
-            selector: CSS selector
-            timeout: Timeout in milliseconds
+            selector: Element selector
+            **kwargs: Additional click options
 
         Returns:
-            True if click successful, False otherwise
+            ActionResult with click status
         """
-        try:
-            logger.debug(f"Clicking element: {selector}")
+        if not self._actions:
+            raise BrowserError("Browser not started")
 
-            # TODO: Implement actual click
-            # if self.page:
-            #     await self.page.click(selector, timeout=timeout)
+        return await self._actions.click(selector, **kwargs)
 
-            return True
-
-        except Exception as e:
-            logger.error(f"Click failed: {e}")
-            return False
-
-    async def type_text(self, selector: str, text: str, timeout: int = 10000) -> bool:
-        """
-        Type text into an element.
+    async def type_text(self, selector: str, text: str, **kwargs) -> ActionResult:
+        """Type text into element.
 
         Args:
-            selector: CSS selector
+            selector: Element selector
             text: Text to type
-            timeout: Timeout in milliseconds
+            **kwargs: Additional typing options
 
         Returns:
-            True if typing successful, False otherwise
+            ActionResult with typing status
         """
-        try:
-            logger.debug(f"Typing into {selector}: {text[:20]}...")
+        if not self._actions:
+            raise BrowserError("Browser not started")
 
-            # TODO: Implement actual typing
-            # if self.page:
-            #     await self.page.fill(selector, text, timeout=timeout)
+        return await self._actions.type_text(selector, text, **kwargs)
 
-            return True
-
-        except Exception as e:
-            logger.error(f"Typing failed: {e}")
-            return False
-
-    async def get_text(self, selector: str, timeout: int = 10000) -> Optional[str]:
-        """
-        Get text content of an element.
+    async def fill(self, selector: str, value: str) -> ActionResult:
+        """Fill input field.
 
         Args:
-            selector: CSS selector
-            timeout: Timeout in milliseconds
+            selector: Element selector
+            value: Value to fill
 
         Returns:
-            Element text or None if not found
+            ActionResult with fill status
         """
-        try:
-            logger.debug(f"Getting text from: {selector}")
+        if not self._actions:
+            raise BrowserError("Browser not started")
 
-            # TODO: Implement actual text extraction
-            # if self.page:
-            #     element = await self.page.wait_for_selector(selector, timeout=timeout)
-            #     return await element.text_content()
+        return await self._actions.fill(selector, value)
 
-            return None
-
-        except Exception as e:
-            logger.error(f"Get text failed: {e}")
-            return None
-
-    async def screenshot(self, path: str) -> bool:
-        """
-        Take a screenshot.
+    async def screenshot(
+        self, path: Optional[str] = None, full_page: bool = False
+    ) -> ActionResult:
+        """Take screenshot.
 
         Args:
-            path: Path to save screenshot
+            path: File path to save screenshot
+            full_page: Capture full scrollable page
 
         Returns:
-            True if screenshot successful, False otherwise
+            ActionResult with screenshot data
         """
-        try:
-            logger.info(f"Taking screenshot: {path}")
+        if not self._actions:
+            raise BrowserError("Browser not started")
 
-            # TODO: Implement actual screenshot
-            # if self.page:
-            #     await self.page.screenshot(path=path)
+        return await self._actions.screenshot(path, full_page)
 
-            return True
+    # Tab management
+    async def new_tab(self) -> Page:
+        """Create new tab.
 
-        except Exception as e:
-            logger.error(f"Screenshot failed: {e}")
-            return False
+        Returns:
+            New page instance
+        """
+        page = await self.playwright.new_page()
+        self.tab_manager.add_tab(page)
+        await self._initialize_page_components(page)
+        return page
+
+    async def close_tab(self, index: Optional[int] = None) -> None:
+        """Close tab.
+
+        Args:
+            index: Tab index (current tab if None)
+        """
+        if index is None:
+            page = self.current_page
+            if page:
+                await self.playwright.close_page(page)
+                tab_index = self.tab_manager.tabs.index(page)
+                self.tab_manager.remove_tab(tab_index)
+        else:
+            if 0 <= index < self.tab_manager.tab_count:
+                page = self.tab_manager.tabs[index]
+                await self.playwright.close_page(page)
+                self.tab_manager.remove_tab(index)
+
+    async def switch_tab(self, index: int) -> Optional[Page]:
+        """Switch to tab by index.
+
+        Args:
+            index: Tab index
+
+        Returns:
+            Page or None if invalid index
+        """
+        page = self.tab_manager.switch_to(index)
+        if page:
+            await self._initialize_page_components(page)
+        return page
+
+    async def get_tabs_info(self) -> List[TabInfo]:
+        """Get information about all tabs.
+
+        Returns:
+            List of tab info
+        """
+        return await self.tab_manager.get_all_tabs_info()
+
+    # Element inspection
+    async def inspect_element(self, selector: str) -> Optional[ElementInfo]:
+        """Inspect element and get detailed information.
+
+        Args:
+            selector: Element selector
+
+        Returns:
+            Element info or None if not found
+        """
+        if not self._inspector:
+            raise BrowserError("Browser not started")
+
+        return await self._inspector.inspect_element(selector)
+
+    async def highlight_element(
+        self, selector: str, color: str = "#ff0000", duration: Optional[int] = None
+    ) -> bool:
+        """Highlight element on page.
+
+        Args:
+            selector: Element selector
+            color: Highlight color
+            duration: Highlight duration in ms (None = permanent)
+
+        Returns:
+            True if highlighted successfully
+        """
+        if not self._inspector:
+            raise BrowserError("Browser not started")
+
+        return await self._inspector.highlight_element(selector, color, duration)
+
+    # Advanced features
+    async def enable_cdp(self) -> bool:
+        """Enable Chrome DevTools Protocol.
+
+        Returns:
+            True if enabled successfully
+        """
+        if not self._cdp_client:
+            raise BrowserError("Browser not started")
+
+        return await self._cdp_client.connect()
+
+    async def execute_cdp_command(
+        self, method: str, params: Optional[Dict[str, Any]] = None
+    ) -> Any:
+        """Execute CDP command.
+
+        Args:
+            method: CDP method name
+            params: Method parameters
+
+        Returns:
+            Command result
+        """
+        if not self._cdp_client:
+            raise BrowserError("Browser not started")
+
+        return await self._cdp_client.send(method, params)
+
+    async def emulate_device(self, device_name: str) -> None:
+        """Emulate mobile device.
+
+        Args:
+            device_name: Device name (e.g., 'iPhone 12')
+        """
+        await self.playwright.emulate_device(device_name)
+
+    def get_actions(self) -> Optional[BrowserActions]:
+        """Get browser actions instance.
+
+        Returns:
+            BrowserActions or None
+        """
+        return self._actions
+
+    def get_selector_engine(self) -> Optional[SelectorEngine]:
+        """Get selector engine instance.
+
+        Returns:
+            SelectorEngine or None
+        """
+        return self._selector_engine
