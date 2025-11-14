@@ -375,23 +375,152 @@ class BrowserPanel(QWidget):
             return
 
         try:
-            # Inject qwebchannel.js first
-            qwebchannel_js = """
-            new QWebChannel(qt.webChannelTransport, function(channel) {
-                window.pybridge = channel.objects.pybridge;
-                console.log('QWebChannel ready');
-            });
-            """
+            # Step 1: Load qwebchannel.js from file system
+            import os
+            import sys
 
-            self.web_view.page().runJavaScript(qwebchannel_js, lambda _: None)
+            # Find qwebchannel.js in PyQt6 installation
+            qwebchannel_js = self._load_qwebchannel_js()
 
-            # Then inject inspector script
-            self.web_view.page().runJavaScript(INSPECTOR_JS, lambda _: None)
+            if qwebchannel_js:
+                # Inject QWebChannel library first
+                self.web_view.page().runJavaScript(qwebchannel_js, lambda _: logger.debug("QWebChannel library loaded"))
 
-            logger.debug("Inspector script injected")
+                # Step 2: Setup QWebChannel connection
+                # Use a callback to ensure QWebChannel is loaded before setup
+                def setup_channel():
+                    qwebchannel_setup = """
+                    (function() {
+                        if (typeof QWebChannel !== 'undefined' && typeof qt !== 'undefined' && qt.webChannelTransport) {
+                            new QWebChannel(qt.webChannelTransport, function(channel) {
+                                window.pybridge = channel.objects.pybridge;
+                                console.log('✅ QWebChannel ready - pybridge connected');
+                            });
+                        } else {
+                            console.error('❌ QWebChannel or qt.webChannelTransport not available');
+                        }
+                    })();
+                    """
+                    self.web_view.page().runJavaScript(qwebchannel_setup)
+
+                # Delay to ensure QWebChannel is loaded
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(50, setup_channel)
+
+                # Step 3: Inject inspector script after QWebChannel is ready
+                QTimer.singleShot(150, lambda: self._inject_inspector_js())
+            else:
+                logger.error("Failed to load qwebchannel.js, inspector may not work properly")
+                # Still inject inspector JS, but it won't be able to communicate
+                self._inject_inspector_js()
 
         except Exception as e:
             logger.error(f"Failed to inject inspector script: {e}")
+
+    def _load_qwebchannel_js(self) -> str:
+        """Load qwebchannel.js from file system."""
+        try:
+            import os
+            import sys
+
+            # Possible locations for qwebchannel.js
+            possible_paths = []
+
+            # Path 1: In site-packages/PyQt6
+            try:
+                import PyQt6
+                pyqt_path = os.path.dirname(PyQt6.__file__)
+
+                possible_paths.extend([
+                    os.path.join(pyqt_path, "Qt6", "resources", "qtwebchannel", "qwebchannel.js"),
+                    os.path.join(pyqt_path, "Qt6", "qml", "QtWebChannel", "qwebchannel.js"),
+                    os.path.join(pyqt_path, "bindings", "QtWebChannel", "qwebchannel.js"),
+                ])
+            except:
+                pass
+
+            # Path 2: System Qt installation
+            if sys.platform == "win32":
+                # Windows
+                possible_paths.extend([
+                    r"C:\Qt\6.6.0\msvc2019_64\qml\QtWebChannel\qwebchannel.js",
+                    os.path.join(os.environ.get('QTDIR', ''), "qml", "QtWebChannel", "qwebchannel.js"),
+                ])
+            elif sys.platform == "darwin":
+                # macOS
+                possible_paths.append("/usr/local/Qt-6.6.0/qml/QtWebChannel/qwebchannel.js")
+            else:
+                # Linux
+                possible_paths.append("/usr/share/qt6/qml/QtWebChannel/qwebchannel.js")
+
+            # Try each path
+            for path in possible_paths:
+                if os.path.exists(path):
+                    with open(path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    logger.debug(f"Loaded qwebchannel.js from: {path}")
+                    return content
+
+            logger.warning("qwebchannel.js not found in standard locations")
+
+            # Fallback: Use CDN version inline
+            return self._get_qwebchannel_fallback()
+
+        except Exception as e:
+            logger.error(f"Error loading qwebchannel.js: {e}")
+            return self._get_qwebchannel_fallback()
+
+    def _get_qwebchannel_fallback(self) -> str:
+        """Minimal QWebChannel implementation as fallback."""
+        # Simplified QWebChannel that works for our use case
+        return """
+        // Minimal QWebChannel fallback
+        console.warn('Using fallback QWebChannel implementation');
+
+        function QWebChannel(transport, initCallback) {
+            var channel = this;
+            this.objects = {};
+
+            var initDone = false;
+            function init() {
+                if (initDone) return;
+                initDone = true;
+
+                // Get objects from Qt
+                transport.send(JSON.stringify({type: 7})); // QWebChannelMessageTypes::Init
+
+                if (initCallback) {
+                    initCallback(channel);
+                }
+            }
+
+            transport.onmessage = function(message) {
+                var data = JSON.parse(message.data);
+
+                if (data.type === 1) { // QWebChannelMessageTypes::Idle
+                    // Extract objects
+                    for (var objectName in data.data) {
+                        if (!channel.objects[objectName]) {
+                            channel.objects[objectName] = data.data[objectName];
+                        }
+                    }
+                    init();
+                }
+            };
+        }
+
+        if (typeof qt !== 'undefined' && qt.webChannelTransport) {
+            console.log('QWebChannel fallback ready');
+        }
+        """
+
+    def _inject_inspector_js(self):
+        """Inject the actual inspector JavaScript."""
+        try:
+            self.web_view.page().runJavaScript(INSPECTOR_JS)
+            logger.debug("Inspector JavaScript injected")
+        except Exception as e:
+            logger.error(f"Failed to inject inspector JS: {e}")
 
     def toggle_inspector(self, enabled):
         """Toggle inspector mode."""
@@ -402,15 +531,46 @@ class BrowserPanel(QWidget):
             return
 
         try:
-            # Call JavaScript to toggle inspector
-            js_code = f"window.toggleInspector({str(enabled).lower()});"
-            self.web_view.page().runJavaScript(js_code)
-
             if enabled:
+                # First ensure inspector script is loaded
+                check_and_toggle = """
+                (function() {
+                    if (typeof window.toggleInspector === 'function') {
+                        window.toggleInspector(true);
+                        return 'ready';
+                    } else {
+                        console.warn('⚠️ Inspector script not loaded yet, will retry...');
+                        return 'not_ready';
+                    }
+                })();
+                """
+
+                def on_check_result(result):
+                    if result == 'not_ready':
+                        # Script not loaded yet, inject it and try again
+                        logger.warning("Inspector script not ready, re-injecting...")
+                        self.inject_inspector_script()
+
+                        # Try again after a short delay
+                        from PyQt6.QtCore import QTimer
+                        QTimer.singleShot(200, lambda: self._activate_inspector())
+                    else:
+                        logger.info("Inspector mode enabled")
+
+                self.web_view.page().runJavaScript(check_and_toggle, on_check_result)
+
                 self.status_label.setText("Inspector mode: Right-click on element to inspect")
                 self.inspector_btn.setText("🎯 Inspector ON")
-                logger.info("Inspector mode enabled")
+
             else:
+                # Disable inspector
+                js_code = """
+                if (typeof window.toggleInspector === 'function') {
+                    window.toggleInspector(false);
+                }
+                """
+                self.web_view.page().runJavaScript(js_code)
+
                 self.status_label.setText("Inspector mode disabled")
                 self.inspector_btn.setText("🎯 Inspector")
                 logger.info("Inspector mode disabled")
@@ -418,6 +578,21 @@ class BrowserPanel(QWidget):
         except Exception as e:
             logger.error(f"Failed to toggle inspector: {e}")
             self.inspector_btn.setChecked(False)
+
+    def _activate_inspector(self):
+        """Activate inspector after ensuring script is loaded."""
+        try:
+            js_code = """
+            if (typeof window.toggleInspector === 'function') {
+                window.toggleInspector(true);
+                console.log('✅ Inspector activated');
+            } else {
+                console.error('❌ Inspector script still not available');
+            }
+            """
+            self.web_view.page().runJavaScript(js_code)
+        except Exception as e:
+            logger.error(f"Failed to activate inspector: {e}")
 
     def on_element_hovered(self, element_info):
         """Handle element hover."""
