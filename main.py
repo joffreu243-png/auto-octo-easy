@@ -87,7 +87,8 @@ def main():
     app.setOrganizationDomain("octomaster.pro")
 
     # Set app-wide settings
-    app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+    # Note: AA_UseHighDpiPixmaps is deprecated in PyQt6 (enabled by default)
+    # app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
 
     # Load configuration
     config = Config()

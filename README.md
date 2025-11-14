@@ -58,6 +58,26 @@
 
 ### Установка
 
+#### 🪟 Windows (Рекомендуется)
+
+**Требования:** Python 3.11, 3.12 или 3.13 (⚠️ НЕ 3.14 - dev версия!)
+
+Используйте автоматический установщик:
+
+```cmd
+# Запустите setup_windows.bat в папке проекта
+setup_windows.bat
+```
+
+📖 **Полная инструкция для Windows:** [WINDOWS_INSTALL.md](WINDOWS_INSTALL.md)
+
+**Возможные проблемы:**
+- ❌ Ошибки компиляции greenlet → Запустите `fix_greenlet.bat`
+- ❌ Проблемы с импортами → Запустите `python fix_imports.py`
+- ❌ PyQt6 warnings → Запустите `python fix_pyqt6.py`
+
+#### 🐧 Linux / 🍎 macOS
+
 ```bash
 # 1. Клонировать репозиторий
 git clone https://github.com/yourusername/octomaster-pro.git
@@ -66,8 +86,6 @@ cd octomaster-pro
 # 2. Создать виртуальное окружение
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
-# ИЛИ
-venv\Scripts\activate  # Windows
 
 # 3. Установить зависимости
 pip install -r requirements.txt
