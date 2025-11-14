@@ -8,9 +8,8 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Optional
 from dataclasses import dataclass
 
-from octomaster.core.workflow import Workflow
+from octomaster.core.workflow import Workflow, Connection
 from octomaster.core.block import Block
-from octomaster.core.connection import Connection
 
 
 class Command(ABC):
