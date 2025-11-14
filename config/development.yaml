@@ -1,0 +1,48 @@
+# OctoMaster Pro - Development Configuration
+# Override settings for development environment
+
+# Application Settings
+app:
+  debug: true
+  log_level: "DEBUG"
+
+# Database Configuration
+database:
+  url: "sqlite:///data/octomaster_dev.db"
+  echo: true  # Log all SQL queries
+
+# Browser Configuration
+browser:
+  headless: false  # Always show browser in dev
+  timeout: 60000  # Longer timeout for debugging
+
+# AI Assistant Configuration
+ai:
+  enabled: true
+  temperature: 0.3  # More deterministic for testing
+
+# Workflow Configuration
+workflow:
+  auto_save_interval: 30  # More frequent saves
+  max_execution_time: 600  # Longer timeout
+
+# Recording Configuration
+recorder:
+  capture_screenshots: true
+  screenshot_on_action: true
+
+# Performance Configuration
+performance:
+  cache_enabled: false  # Disable cache for testing
+  max_concurrent_tasks: 2  # Lower for debugging
+
+# UI Configuration
+ui:
+  show_tips: true
+  confirm_delete: false  # Faster workflow
+
+# Logging Configuration
+logging:
+  rotation: "10 MB"  # Smaller files
+  retention: "3 days"
+  diagnose: true  # Full diagnostics
