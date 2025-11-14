@@ -22,6 +22,26 @@ from src.nodes.blocks.actions import (
     ScrollBlock,
     ScreenshotBlock,
 )
+from src.nodes.blocks.wait import (
+    WaitBlock,
+    WaitForElementBlock,
+    WaitForNavigationBlock,
+    WaitForSelectorBlock,
+)
+from src.nodes.blocks.data import (
+    ExtractTextBlock,
+    ExtractAttributeBlock,
+    SetVariableBlock,
+    GetVariableBlock,
+    ExtractMultipleBlock,
+)
+from src.nodes.blocks.conditions import (
+    IfBlock,
+    LoopBlock,
+    SwitchBlock,
+    BreakBlock,
+    ContinueBlock,
+)
 
 __all__ = [
     "BaseBlock",
@@ -40,4 +60,21 @@ __all__ = [
     "HoverBlock",
     "ScrollBlock",
     "ScreenshotBlock",
+    # Wait
+    "WaitBlock",
+    "WaitForElementBlock",
+    "WaitForNavigationBlock",
+    "WaitForSelectorBlock",
+    # Data
+    "ExtractTextBlock",
+    "ExtractAttributeBlock",
+    "SetVariableBlock",
+    "GetVariableBlock",
+    "ExtractMultipleBlock",
+    # Conditions
+    "IfBlock",
+    "LoopBlock",
+    "SwitchBlock",
+    "BreakBlock",
+    "ContinueBlock",
 ]

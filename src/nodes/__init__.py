@@ -31,4 +31,21 @@ __all__ = [
     "HoverBlock",
     "ScrollBlock",
     "ScreenshotBlock",
+    # Wait blocks
+    "WaitBlock",
+    "WaitForElementBlock",
+    "WaitForNavigationBlock",
+    "WaitForSelectorBlock",
+    # Data blocks
+    "ExtractTextBlock",
+    "ExtractAttributeBlock",
+    "SetVariableBlock",
+    "GetVariableBlock",
+    "ExtractMultipleBlock",
+    # Condition blocks
+    "IfBlock",
+    "LoopBlock",
+    "SwitchBlock",
+    "BreakBlock",
+    "ContinueBlock",
 ]

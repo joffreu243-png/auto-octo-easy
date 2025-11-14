@@ -1,238 +1,411 @@
 """
-Node editor for visual workflow creation.
+Main node editor widget for visual workflow construction.
 
-This module provides the core node editor functionality for creating and
-managing visual workflows.
+Provides complete node editor interface with block palette,
+canvas, and workflow execution capabilities.
 """
 
-from typing import Optional
+from typing import Optional, Dict, Any, List
 from pathlib import Path
-import json
+
+from PyQt6.QtWidgets import (
+    QWidget,
+    QVBoxLayout,
+    QHBoxLayout,
+    QListWidget,
+    QListWidgetItem,
+    QPushButton,
+    QLabel,
+    QMessageBox,
+    QFileDialog,
+    QProgressBar,
+    QSplitter,
+)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent
 from loguru import logger
 
-from src.nodes.node import Node, NodeType
-from src.nodes.connection import Connection
-from src.core.exceptions import WorkflowError
+from src.nodes.scene import NodeScene
+from src.nodes.executor import WorkflowExecutor, ExecutionStatus
+from src.nodes.serializer import WorkflowSerializer
+from src.nodes.blocks import *
 
 
-class NodeEditor:
-    """
-    Visual node editor for workflow creation.
+class BlockPalette(QListWidget):
+    """Block palette for adding blocks to workflow."""
 
-    Manages nodes, connections, and workflow state.
-    """
+    block_requested = pyqtSignal(str)  # Block type name
 
-    def __init__(self) -> None:
+    def __init__(self, parent=None) -> None:
+        """Initialize block palette."""
+        super().__init__(parent)
+
+        self.setMaximumWidth(200)
+        self.setDragEnabled(True)
+
+        self._populate_blocks()
+
+    def _populate_blocks(self) -> None:
+        """Populate palette with available blocks."""
+        blocks = {
+            "Navigation": [
+                ("Open URL", "OpenURLBlock"),
+                ("Go Back", "BackBlock"),
+                ("Go Forward", "ForwardBlock"),
+                ("Refresh", "RefreshBlock"),
+                ("New Tab", "NewTabBlock"),
+                ("Close Tab", "CloseTabBlock"),
+            ],
+            "Actions": [
+                ("Click", "ClickBlock"),
+                ("Type Text", "TypeTextBlock"),
+                ("Fill", "FillBlock"),
+                ("Select", "SelectDropdownBlock"),
+                ("Hover", "HoverBlock"),
+                ("Scroll", "ScrollBlock"),
+                ("Screenshot", "ScreenshotBlock"),
+            ],
+            "Wait": [
+                ("Wait", "WaitBlock"),
+                ("Wait Element", "WaitForElementBlock"),
+                ("Wait Navigation", "WaitForNavigationBlock"),
+                ("Wait Selector", "WaitForSelectorBlock"),
+            ],
+            "Data": [
+                ("Extract Text", "ExtractTextBlock"),
+                ("Extract Attr", "ExtractAttributeBlock"),
+                ("Set Variable", "SetVariableBlock"),
+                ("Get Variable", "GetVariableBlock"),
+                ("Extract Multiple", "ExtractMultipleBlock"),
+            ],
+            "Control Flow": [
+                ("If Condition", "IfBlock"),
+                ("Loop", "LoopBlock"),
+                ("Switch", "SwitchBlock"),
+                ("Break", "BreakBlock"),
+                ("Continue", "ContinueBlock"),
+            ],
+        }
+
+        for category, block_list in blocks.items():
+            # Add category header
+            category_item = QListWidgetItem(f"--- {category} ---")
+            category_item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.addItem(category_item)
+
+            # Add blocks
+            for display_name, block_class_name in block_list:
+                item = QListWidgetItem(display_name)
+                item.setData(Qt.ItemDataRole.UserRole, block_class_name)
+                self.addItem(item)
+
+    def startDrag(self, supportedActions):
+        """Start drag operation."""
+        item = self.currentItem()
+        if item:
+            block_type = item.data(Qt.ItemDataRole.UserRole)
+            if block_type:
+                self.block_requested.emit(block_type)
+
+
+class NodeEditor(QWidget):
+    """Main node editor widget."""
+
+    workflow_changed = pyqtSignal()
+    execution_started = pyqtSignal()
+    execution_finished = pyqtSignal(object)  # ExecutionResult
+
+    def __init__(self, parent=None) -> None:
         """Initialize node editor."""
-        self.nodes: dict[str, Node] = {}
-        self.connections: dict[str, Connection] = {}
-        self.is_modified = False
+        super().__init__(parent)
 
-        logger.debug("Node editor initialized")
+        # Core components
+        self.scene = NodeScene()
+        self.executor: Optional[WorkflowExecutor] = None
+        self.serializer = WorkflowSerializer()
 
-    def add_node(self, node: Node) -> bool:
-        """
-        Add a node to the workflow.
+        # State
+        self.current_file: Optional[Path] = None
+        self.is_executing = False
 
-        Args:
-            node: Node to add
+        # UI
+        self._setup_ui()
+        self._connect_signals()
 
-        Returns:
-            True if added successfully, False if node ID already exists
-        """
-        if node.id in self.nodes:
-            logger.warning(f"Node with ID {node.id} already exists")
-            return False
+    def _setup_ui(self) -> None:
+        """Setup user interface."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
 
-        self.nodes[node.id] = node
-        self.is_modified = True
-        logger.debug(f"Added node: {node.type.value} ({node.id})")
-        return True
+        # Toolbar
+        toolbar_layout = QHBoxLayout()
 
-    def remove_node(self, node_id: str) -> bool:
-        """
-        Remove a node from the workflow.
+        self.btn_new = QPushButton("New")
+        self.btn_open = QPushButton("Open")
+        self.btn_save = QPushButton("Save")
+        self.btn_execute = QPushButton("Execute")
+        self.btn_stop = QPushButton("Stop")
+        self.btn_stop.setEnabled(False)
 
-        Args:
-            node_id: ID of node to remove
+        toolbar_layout.addWidget(self.btn_new)
+        toolbar_layout.addWidget(self.btn_open)
+        toolbar_layout.addWidget(self.btn_save)
+        toolbar_layout.addStretch()
+        toolbar_layout.addWidget(self.btn_execute)
+        toolbar_layout.addWidget(self.btn_stop)
 
-        Returns:
-            True if removed successfully, False if node not found
-        """
-        if node_id not in self.nodes:
-            logger.warning(f"Node {node_id} not found")
-            return False
+        layout.addLayout(toolbar_layout)
 
-        # Remove all connections to/from this node
-        connections_to_remove = [
-            conn_id
-            for conn_id, conn in self.connections.items()
-            if conn.source_node_id == node_id or conn.target_node_id == node_id
-        ]
+        # Main content
+        splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        for conn_id in connections_to_remove:
-            self.remove_connection(conn_id)
+        # Block palette
+        self.palette = BlockPalette()
+        splitter.addWidget(self.palette)
 
-        del self.nodes[node_id]
-        self.is_modified = True
-        logger.debug(f"Removed node: {node_id}")
-        return True
+        # Canvas (use existing CanvasView from GUI)
+        # For now, create a simple placeholder
+        from PyQt6.QtWidgets import QGraphicsView
 
-    def get_node(self, node_id: str) -> Optional[Node]:
-        """
-        Get a node by ID.
+        self.view = QGraphicsView(self.scene)
+        self.view.setRenderHint(self.view.renderHints() | self.view.RenderHint.Antialiasing)
+        splitter.addWidget(self.view)
 
-        Args:
-            node_id: Node ID
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
 
-        Returns:
-            Node or None if not found
-        """
-        return self.nodes.get(node_id)
+        layout.addWidget(splitter)
 
-    def add_connection(self, connection: Connection) -> bool:
-        """
-        Add a connection between nodes.
+        # Status bar
+        status_layout = QHBoxLayout()
 
-        Args:
-            connection: Connection to add
+        self.status_label = QLabel("Ready")
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximumWidth(200)
+        self.progress_bar.setVisible(False)
 
-        Returns:
-            True if added successfully, False otherwise
+        status_layout.addWidget(self.status_label)
+        status_layout.addStretch()
+        status_layout.addWidget(self.progress_bar)
 
-        Raises:
-            WorkflowError: If connection is invalid
-        """
-        # Validate nodes exist
-        if connection.source_node_id not in self.nodes:
-            raise WorkflowError(f"Source node not found: {connection.source_node_id}")
-        if connection.target_node_id not in self.nodes:
-            raise WorkflowError(f"Target node not found: {connection.target_node_id}")
+        layout.addLayout(status_layout)
 
-        # Add connection
-        self.connections[connection.id] = connection
+    def _connect_signals(self) -> None:
+        """Connect signals."""
+        self.btn_new.clicked.connect(self.new_workflow)
+        self.btn_open.clicked.connect(self.open_workflow)
+        self.btn_save.clicked.connect(self.save_workflow)
+        self.btn_execute.clicked.connect(self.execute_workflow)
+        self.btn_stop.clicked.connect(self.stop_execution)
 
-        # Update node connections
-        source_node = self.nodes[connection.source_node_id]
-        target_node = self.nodes[connection.target_node_id]
+        self.palette.block_requested.connect(self.add_block)
 
-        source_node.add_output(connection.target_node_id)
-        target_node.add_input(connection.source_node_id)
+        self.scene.node_added.connect(lambda: self.workflow_changed.emit())
+        self.scene.node_removed.connect(lambda: self.workflow_changed.emit())
+        self.scene.connection_added.connect(lambda: self.workflow_changed.emit())
 
-        self.is_modified = True
-        logger.debug(f"Added connection: {connection.source_node_id} -> {connection.target_node_id}")
-        return True
-
-    def remove_connection(self, connection_id: str) -> bool:
-        """
-        Remove a connection.
+    def add_block(self, block_class_name: str) -> None:
+        """Add block to scene.
 
         Args:
-            connection_id: Connection ID
-
-        Returns:
-            True if removed successfully, False if not found
-        """
-        if connection_id not in self.connections:
-            logger.warning(f"Connection {connection_id} not found")
-            return False
-
-        connection = self.connections[connection_id]
-
-        # Update node connections
-        if connection.source_node_id in self.nodes:
-            self.nodes[connection.source_node_id].remove_output(connection.target_node_id)
-        if connection.target_node_id in self.nodes:
-            self.nodes[connection.target_node_id].remove_input(connection.source_node_id)
-
-        del self.connections[connection_id]
-        self.is_modified = True
-        logger.debug(f"Removed connection: {connection_id}")
-        return True
-
-    def clear(self) -> None:
-        """Clear all nodes and connections."""
-        self.nodes.clear()
-        self.connections.clear()
-        self.is_modified = False
-        logger.debug("Editor cleared")
-
-    def save_to_file(self, file_path: Path) -> None:
-        """
-        Save workflow to file.
-
-        Args:
-            file_path: Path to save file
-
-        Raises:
-            WorkflowError: If save fails
+            block_class_name: Name of block class to add
         """
         try:
-            workflow_data = {
-                "nodes": [node.to_dict() for node in self.nodes.values()],
-                "connections": [conn.to_dict() for conn in self.connections.values()],
-            }
+            # Get block class from globals
+            block_class = globals().get(block_class_name)
+            if not block_class:
+                logger.error(f"Block class not found: {block_class_name}")
+                return
 
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(workflow_data, f, indent=2)
+            # Create block instance
+            block = block_class()
 
-            self.is_modified = False
-            logger.info(f"Workflow saved to {file_path}")
+            # Add to scene at center
+            center = self.view.viewport().rect().center()
+            scene_pos = self.view.mapToScene(center)
+            block.graphics_node.setPos(scene_pos.x(), scene_pos.y())
+
+            self.scene.add_node(block.graphics_node)
+
+            logger.info(f"Added block: {block.title}")
 
         except Exception as e:
-            raise WorkflowError(f"Failed to save workflow: {e}") from e
+            logger.error(f"Failed to add block: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to add block: {e}")
 
-    def load_from_file(self, file_path: Path) -> None:
-        """
-        Load workflow from file.
+    def new_workflow(self) -> None:
+        """Create new workflow."""
+        if self.scene.has_changes():
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "Save current workflow?",
+                QMessageBox.StandardButton.Yes
+                | QMessageBox.StandardButton.No
+                | QMessageBox.StandardButton.Cancel,
+            )
 
-        Args:
-            file_path: Path to load file
+            if reply == QMessageBox.StandardButton.Cancel:
+                return
+            elif reply == QMessageBox.StandardButton.Yes:
+                self.save_workflow()
 
-        Raises:
-            WorkflowError: If load fails
-        """
+        self.scene.clear()
+        self.current_file = None
+        self.status_label.setText("New workflow")
+
+        logger.info("Created new workflow")
+
+    def open_workflow(self) -> None:
+        """Open workflow from file."""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Open Workflow", "", "Workflow Files (*.json);;All Files (*)"
+        )
+
+        if not file_path:
+            return
+
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                workflow_data = json.load(f)
+            blocks, connections_data = self.serializer.load_from_file(Path(file_path))
 
-            self.clear()
+            self.scene.clear()
 
-            # Load nodes
-            for node_data in workflow_data.get("nodes", []):
-                node = Node.from_dict(node_data)
-                self.add_node(node)
+            # Add blocks
+            for block in blocks:
+                self.scene.add_node(block.graphics_node)
 
-            # Load connections
-            for conn_data in workflow_data.get("connections", []):
-                connection = Connection.from_dict(conn_data)
-                self.add_connection(connection)
+            # TODO: Create connections from connections_data
+            # This requires matching block IDs to recreate connections
 
-            self.is_modified = False
-            logger.info(f"Workflow loaded from {file_path}")
+            self.current_file = Path(file_path)
+            self.status_label.setText(f"Opened: {file_path}")
+
+            logger.info(f"Opened workflow: {file_path}")
 
         except Exception as e:
-            raise WorkflowError(f"Failed to load workflow: {e}") from e
+            logger.error(f"Failed to open workflow: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to open workflow: {e}")
 
-    def validate(self) -> tuple[bool, list[str]]:
-        """
-        Validate workflow.
+    def save_workflow(self) -> None:
+        """Save workflow to file."""
+        if not self.current_file:
+            self.save_workflow_as()
+            return
+
+        try:
+            blocks = self._get_all_blocks()
+            connections = self.scene.get_connections()
+
+            self.serializer.save_to_file(self.current_file, blocks, connections)
+
+            self.status_label.setText(f"Saved: {self.current_file}")
+            logger.info(f"Saved workflow: {self.current_file}")
+
+        except Exception as e:
+            logger.error(f"Failed to save workflow: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to save workflow: {e}")
+
+    def save_workflow_as(self) -> None:
+        """Save workflow to new file."""
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Save Workflow As", "", "Workflow Files (*.json);;All Files (*)"
+        )
+
+        if not file_path:
+            return
+
+        self.current_file = Path(file_path)
+        self.save_workflow()
+
+    async def execute_workflow(self) -> None:
+        """Execute workflow."""
+        if self.is_executing:
+            QMessageBox.warning(self, "Warning", "Workflow is already executing")
+            return
+
+        try:
+            blocks = self._get_all_blocks()
+            connections = self.scene.get_connections()
+
+            if not blocks:
+                QMessageBox.warning(self, "Warning", "No blocks to execute")
+                return
+
+            # Create executor
+            self.executor = WorkflowExecutor(blocks, connections)
+
+            # Get browser instance (from context or create new)
+            # For now, this is a placeholder
+            browser = None  # TODO: Get browser from main app
+
+            # Update UI
+            self.is_executing = True
+            self.btn_execute.setEnabled(False)
+            self.btn_stop.setEnabled(True)
+            self.progress_bar.setVisible(True)
+            self.status_label.setText("Executing...")
+
+            self.execution_started.emit()
+
+            # Execute
+            result = await self.executor.execute(browser)
+
+            # Update UI
+            self.is_executing = False
+            self.btn_execute.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+            self.progress_bar.setVisible(False)
+
+            if result.status == ExecutionStatus.COMPLETED:
+                self.status_label.setText("Execution completed")
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"Workflow executed successfully\n\n"
+                    f"Executed blocks: {result.executed_blocks}/{result.total_blocks}",
+                )
+            elif result.status == ExecutionStatus.FAILED:
+                self.status_label.setText("Execution failed")
+                error_text = "\n".join([e.get("error", "") for e in result.errors])
+                QMessageBox.critical(
+                    self, "Error", f"Workflow execution failed:\n\n{error_text}"
+                )
+
+            self.execution_finished.emit(result)
+
+            logger.info(f"Workflow execution finished: {result.status.value}")
+
+        except Exception as e:
+            self.is_executing = False
+            self.btn_execute.setEnabled(True)
+            self.btn_stop.setEnabled(False)
+            self.progress_bar.setVisible(False)
+            self.status_label.setText("Execution error")
+
+            logger.error(f"Workflow execution error: {e}")
+            QMessageBox.critical(self, "Error", f"Execution error: {e}")
+
+    def stop_execution(self) -> None:
+        """Stop workflow execution."""
+        if self.executor:
+            self.executor.cancel()
+            self.status_label.setText("Execution cancelled")
+            logger.info("Workflow execution cancelled")
+
+    def _get_all_blocks(self) -> List[BaseBlock]:
+        """Get all blocks from scene.
 
         Returns:
-            Tuple of (is_valid, list of error messages)
+            List of blocks
         """
-        errors: list[str] = []
+        blocks = []
+        for item in self.scene.items():
+            if hasattr(item, "block"):
+                blocks.append(item.block)
+        return blocks
 
-        # Check for at least one node
-        if not self.nodes:
-            errors.append("Workflow must contain at least one node")
-            return False, errors
-
-        # Check for cycles
-        # TODO: Implement cycle detection
-
-        # Check for unreachable nodes
-        # TODO: Implement reachability check
-
-        is_valid = len(errors) == 0
-        return is_valid, errors
+    def _update_progress(self) -> None:
+        """Update progress bar during execution."""
+        if self.executor:
+            progress = self.executor.get_progress()
+            self.progress_bar.setValue(int(progress))
