@@ -472,6 +472,14 @@ class MainWindow(QMainWindow):
         self.debugger_widget.continue_requested.connect(self.on_debug_continue)
         self.debugger_widget.stop_requested.connect(self.stop_workflow)
 
+        # Browser panel signals
+        if hasattr(self.browser_panel, 'element_selected'):
+            try:
+                self.browser_panel.element_selected.connect(self.on_browser_element_selected)
+                logger.info("✅ Connected browser inspector to visual editor")
+            except Exception as e:
+                logger.error(f"❌ Failed to connect browser inspector: {e}")
+
         # Verify all connections
         self.verify_connections()
 
@@ -1419,6 +1427,74 @@ class MainWindow(QMainWindow):
     def on_variable_changed(self, name: str, value):
         """Handle variable changes."""
         self.console_widget.append_text(f"Variable set: {name} = {value}\n")
+
+    def on_browser_element_selected(self, block_data: dict):
+        """Handle element selected from browser inspector.
+
+        Args:
+            block_data: Dict with 'type', 'selector', 'element_info' keys
+        """
+        try:
+            from octomaster.core.block import BlockType
+
+            action_type = block_data.get('type', '')
+            selector = block_data.get('selector', '')
+            element_info = block_data.get('element_info', {})
+
+            # Map action type string to BlockType enum
+            block_type_map = {
+                'click': BlockType.CLICK,
+                'double_click': BlockType.DOUBLE_CLICK,
+                'hover': BlockType.HOVER,
+                'type_text': BlockType.TYPE_TEXT,
+                'clear': BlockType.CLEAR,
+                'get_text': BlockType.GET_TEXT,
+                'get_attribute': BlockType.GET_ATTRIBUTE,
+                'get_html': BlockType.GET_HTML,
+                'wait_for_element': BlockType.WAIT_FOR_ELEMENT,
+                'wait_for_disappear': BlockType.WAIT_FOR_DISAPPEAR,
+            }
+
+            block_type = block_type_map.get(action_type)
+            if not block_type:
+                logger.warning(f"Unknown action type: {action_type}")
+                return
+
+            # Add block to visual editor
+            self.visual_editor.add_block(block_type)
+
+            # Get the newly added block (last block in workflow)
+            if self.current_workflow.blocks:
+                new_block = self.current_workflow.blocks[-1]
+
+                # Set selector parameter
+                new_block.set_parameter('selector', selector)
+
+                # Set additional parameters based on action type
+                if action_type == 'type_text' and 'text' in block_data:
+                    new_block.set_parameter('text', block_data['text'])
+
+                elif action_type == 'get_attribute' and 'attribute' in block_data:
+                    new_block.set_parameter('attribute', block_data['attribute'])
+
+                # Mark as modified
+                self.is_modified = True
+
+                # Update visual editor to show new parameters
+                self.visual_editor.refresh()
+
+                # Show feedback
+                tag = element_info.get('tagName', 'element')
+                self.statusBar().showMessage(f"Added {action_type} block for <{tag}>")
+                self.console_widget.append_text(
+                    f"🎯 Added {action_type} block\n"
+                    f"   Selector: {selector}\n"
+                )
+                logger.info(f"Added block from browser inspector: {action_type} on {selector}")
+
+        except Exception as e:
+            logger.error(f"Failed to add block from browser inspector: {e}")
+            self.console_widget.append_text(f"❌ Failed to add block: {e}\n")
 
     def on_block_start(self, block):
         """Callback when block starts."""
