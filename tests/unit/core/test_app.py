@@ -123,8 +123,9 @@ class TestApplicationLifecycle:
         def event_handler(event):
             events_received.append(event)
 
+        from src.core.events import EventType
+
         app.event_bus.subscribe(
-            from src.core.events import EventType
             EventType.APP_STARTED,
             event_handler
         )
