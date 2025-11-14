@@ -23,22 +23,27 @@ from PyQt6.QtWidgets import (
 )
 
 from src.gui.styles.themes import ThemeType, get_theme_manager
+from loguru import logger
 
 
 class SettingsDialog(QDialog):
     """Settings dialog."""
 
-    def __init__(self, parent: Optional[QWidget] = None) -> None:
+    def __init__(self, config=None, parent: Optional[QWidget] = None) -> None:
         """Initialize settings dialog.
 
         Args:
+            config: Application configuration object
             parent: Parent widget
         """
         super().__init__(parent)
+        self.config = config
         self.setWindowTitle("Settings")
         self.setModal(True)
         self.setMinimumSize(600, 400)
         self._setup_ui()
+        if self.config:
+            self._load_settings()
 
     def _setup_ui(self) -> None:
         """Setup dialog UI."""
@@ -234,9 +239,65 @@ class SettingsDialog(QDialog):
 
     def _apply_settings(self) -> None:
         """Apply settings without closing dialog."""
-        # Apply theme
-        theme_text = self._theme_combo.currentText()
-        theme = ThemeType.DARK if theme_text == "Dark" else ThemeType.LIGHT
-        get_theme_manager().set_theme(theme)
+        try:
+            # Apply theme
+            theme_text = self._theme_combo.currentText()
+            theme = ThemeType.DARK if theme_text == "Dark" else ThemeType.LIGHT
+            get_theme_manager().set_theme(theme)
+            logger.debug(f"Applied theme: {theme_text}")
 
-        # TODO: Apply other settings
+            if not self.config:
+                logger.warning("No config object provided, settings not saved")
+                return
+
+            # Apply general settings
+            self.config.set('autosave_enabled', self._autosave_check.isChecked())
+            self.config.set('autosave_interval', self._autosave_spin.value())
+
+            # Apply editor settings
+            self.config.set('font_size', self._font_size_spin.value())
+            self.config.set('show_line_numbers', self._line_numbers_check.isChecked())
+            self.config.set('word_wrap', self._word_wrap_check.isChecked())
+
+            # Apply workflow settings
+            self.config.set('default_timeout', self._timeout_spin.value())
+            self.config.set('stop_on_error', self._stop_on_error_check.isChecked())
+
+            # Apply browser settings
+            self.config.set('headless', self._headless_check.isChecked())
+            self.config.set('disable_images', self._disable_images_check.isChecked())
+            self.config.set('browser_timeout', self._page_timeout_spin.value() * 1000)  # Convert to ms
+
+            logger.info("Settings applied successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to apply settings: {e}")
+
+    def _load_settings(self) -> None:
+        """Load settings from config."""
+        try:
+            if not self.config:
+                return
+
+            # Load general settings
+            self._autosave_check.setChecked(self.config.get('autosave_enabled', True))
+            self._autosave_spin.setValue(self.config.get('autosave_interval', 5))
+
+            # Load editor settings
+            self._font_size_spin.setValue(self.config.get('font_size', 10))
+            self._line_numbers_check.setChecked(self.config.get('show_line_numbers', True))
+            self._word_wrap_check.setChecked(self.config.get('word_wrap', False))
+
+            # Load workflow settings
+            self._timeout_spin.setValue(self.config.get('default_timeout', 30))
+            self._stop_on_error_check.setChecked(self.config.get('stop_on_error', True))
+
+            # Load browser settings
+            self._headless_check.setChecked(self.config.get('headless', False))
+            self._disable_images_check.setChecked(self.config.get('disable_images', False))
+            self._page_timeout_spin.setValue(self.config.get('browser_timeout', 30000) // 1000)  # Convert from ms
+
+            logger.debug("Settings loaded successfully")
+
+        except Exception as e:
+            logger.error(f"Failed to load settings: {e}")

@@ -942,15 +942,110 @@ class MainWindow(QMainWindow):
 
     def show_settings(self):
         """Show settings dialog."""
-        QMessageBox.information(self, "Settings", "Settings dialog will be implemented here")
+        try:
+            from src.gui.dialogs.settings import SettingsDialog
+
+            dialog = SettingsDialog(config=self.config, parent=self)
+            if dialog.exec():
+                logger.info("Settings saved")
+                self.statusBar().showMessage("Settings saved successfully")
+                self.console_widget.append_text("✅ Settings updated\n")
+        except ImportError as e:
+            logger.error(f"Failed to import SettingsDialog: {e}")
+            QMessageBox.warning(
+                self,
+                "Settings",
+                "Settings dialog not found. Please check installation."
+            )
+        except Exception as e:
+            logger.error(f"Failed to show settings: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to open settings:\n{e}"
+            )
 
     def show_plugins(self):
         """Show plugins dialog."""
-        QMessageBox.information(self, "Plugins", "Plugins dialog will be implemented here")
+        try:
+            from octomaster.gui.dialogs.plugins_dialog import PluginsDialog
+
+            # Get or create plugin manager
+            plugin_manager = getattr(self, 'plugin_manager', None)
+
+            dialog = PluginsDialog(plugin_manager=plugin_manager, parent=self)
+            dialog.exec()
+            logger.info("Plugins dialog closed")
+
+        except ImportError as e:
+            logger.error(f"Failed to import PluginsDialog: {e}")
+            QMessageBox.information(
+                self,
+                "Plugins",
+                "Plugin management system is available but dialog module not found.\n\n"
+                "Plugins can be managed through the plugin system API."
+            )
+        except Exception as e:
+            logger.error(f"Failed to show plugins dialog: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to open plugins dialog:\n{e}"
+            )
 
     def show_templates(self):
         """Show template library."""
-        QMessageBox.information(self, "Templates", "Template library will be implemented here")
+        try:
+            from octomaster.gui.dialogs.templates_dialog import TemplatesDialog
+            from octomaster.core.templates.manager import TemplateManager
+
+            # Get or create template manager
+            if not hasattr(self, 'template_manager'):
+                self.template_manager = TemplateManager()
+
+            dialog = TemplatesDialog(template_manager=self.template_manager, parent=self)
+
+            # Connect template selection signal
+            dialog.template_selected.connect(self.on_template_selected)
+
+            dialog.exec()
+            logger.info("Templates dialog closed")
+
+        except ImportError as e:
+            logger.error(f"Failed to import TemplatesDialog: {e}")
+            QMessageBox.information(
+                self,
+                "Templates",
+                "Template library system is available.\n\n"
+                "Templates can be found in the resources/templates/ directory."
+            )
+        except Exception as e:
+            logger.error(f"Failed to show templates dialog: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to open templates dialog:\n{e}"
+            )
+
+    def on_template_selected(self, workflow):
+        """Handle template selection - load the workflow."""
+        try:
+            if workflow:
+                self.current_workflow = workflow
+                self.current_file_path = None
+                self.is_modified = True
+                self.visual_editor.set_workflow(workflow)
+                self.update_window_title()
+                self.console_widget.append_text(f"✨ Loaded workflow from template: {workflow.name}\n")
+                logger.info(f"Loaded workflow from template: {workflow.name}")
+
+        except Exception as e:
+            logger.error(f"Failed to load template workflow: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to load template workflow:\n{e}"
+            )
 
     def show_quick_start(self):
         """Show quick start guide."""
