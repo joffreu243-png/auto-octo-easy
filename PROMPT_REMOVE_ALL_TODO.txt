@@ -1,0 +1,577 @@
+═══════════════════════════════════════════════════════════════
+ПРОМПТ ДЛЯ AI: УБРАТЬ ВСЕ TODO И СДЕЛАТЬ 100% РАБОЧИЙ КОД
+Полная реализация всего функционала без заглушек
+═══════════════════════════════════════════════════════════════
+
+Привет! У меня проект OctoMaster Pro (Python + PyQt6 + Playwright).
+
+КРИТИЧЕСКАЯ ПРОБЛЕМА:
+В коде много TODO, заглушек, pass, "not implemented" вместо РЕАЛЬНОГО функционала.
+
+Например:
+- Поля параметров не работают (TODO вместо реализации)
+- Кнопки показывают заглушки (QMessageBox вместо реальных диалогов)
+- Функции имеют только pass вместо кода
+- Много "временных" решений
+
+ЗАДАЧА:
+Пройди ВЕСЬ проект и замени ВСЕ заглушки на ПОЛНОСТЬЮ РАБОЧИЙ код.
+
+═══════════════════════════════════════════════════════════════
+ШАГ 1: НАЙДИ ВСЕ ЗАГЛУШКИ
+═══════════════════════════════════════════════════════════════
+
+Найди в КАЖДОМ файле проекта:
+
+1. Комментарии TODO, FIXME, XXX, HACK
+2. Строки с только "pass"
+3. Функции с только docstring и pass
+4. raise NotImplementedError
+5. QMessageBox с текстом "coming soon", "not implemented", "TODO"
+6. Временные заглушки (placeholder, stub, temporary)
+7. Пустые обработчики событий
+8. Неподключенные сигналы
+9. Незаполненные методы
+
+КОМАНДЫ ДЛЯ ПОИСКА:
+```bash
+# Найти все TODO
+grep -r "TODO\|FIXME\|XXX\|HACK" . --include="*.py"
+
+# Найти все pass
+grep -r "^\s*pass\s*$" . --include="*.py"
+
+# Найти NotImplementedError
+grep -r "NotImplementedError" . --include="*.py"
+
+# Найти заглушки в GUI
+grep -r "coming soon\|not implemented\|placeholder" . --include="*.py"
+```
+
+═══════════════════════════════════════════════════════════════
+ШАГ 2: ПРОАНАЛИЗИРУЙ АРХИТЕКТУРУ
+═══════════════════════════════════════════════════════════════
+
+ПРЕЖДЕ ЧЕМ ПИСАТЬ КОД, изучи:
+
+1. Структуру проекта:
+   - Где какие модули
+   - Как они связаны
+   - Какие классы существуют
+
+2. Существующий функционал:
+   - Что уже работает
+   - Какие паттерны используются
+   - Как реализованы похожие функции
+
+3. Зависимости:
+   - Какие библиотеки доступны
+   - Какие API используются (Octo Browser, Playwright)
+   - Какие модели данных есть
+
+═══════════════════════════════════════════════════════════════
+ШАГ 3: РЕАЛИЗУЙ КАЖДУЮ ЗАГЛУШКУ
+═══════════════════════════════════════════════════════════════
+
+Для КАЖДОЙ найденной заглушки:
+
+1. ПОЙМИ что должна делать функция:
+   - Прочитай docstring
+   - Посмотри где она вызывается
+   - Посмотри параметры и возвращаемое значение
+
+2. НАЙДИ примеры:
+   - Есть ли похожая реализованная функция
+   - Как это делают в других частях кода
+   - Какой паттерн используется
+
+3. РЕАЛИЗУЙ полностью:
+   - Напиши рабочий код
+   - Обработай все ошибки (try/except)
+   - Добавь логирование
+   - Добавь валидацию входных данных
+   - Верни правильный результат
+
+4. ПРОТЕСТИРУЙ логику:
+   - Проверь что код компилируется
+   - Проверь что нет очевидных ошибок
+   - Убедись что подключены все сигналы
+
+═══════════════════════════════════════════════════════════════
+ПРИМЕРЫ ЗАМЕНЫ ЗАГЛУШЕК НА РЕАЛЬНЫЙ КОД
+═══════════════════════════════════════════════════════════════
+
+ПРИМЕР 1: Settings Dialog
+
+❌ ЗАГЛУШКА (НЕПРАВИЛЬНО):
+```python
+def show_settings(self):
+    """Show settings dialog (TODO: implement)."""
+    QMessageBox.information(
+        self, "Settings",
+        "Settings dialog coming soon!\n\nFor now, edit .env file."
+    )
+```
+
+✅ ПОЛНАЯ РЕАЛИЗАЦИЯ (ПРАВИЛЬНО):
+```python
+def show_settings(self):
+    """Show settings dialog."""
+    try:
+        from octomaster.gui.dialogs.settings_dialog import SettingsDialog
+
+        dialog = SettingsDialog(self.config, self)
+        if dialog.exec():
+            # Сохраняем настройки
+            new_config = dialog.get_config()
+            self.config.update(new_config)
+
+            # Сохраняем в файл
+            self.save_config()
+
+            logger.info("Settings saved successfully")
+
+            # Показываем уведомление
+            self.console_panel.append("✅ Settings saved")
+
+            # Применяем новые настройки
+            self.apply_config()
+
+    except ImportError:
+        logger.error("Settings dialog not found, creating it")
+        # Создаем диалог если его нет
+        self.create_settings_dialog()
+    except Exception as e:
+        logger.error(f"Failed to show settings: {e}")
+        QMessageBox.critical(
+            self, "Error",
+            f"Failed to open settings:\n{e}"
+        )
+```
+
+═══════════════════════════════════════════════════════════════
+
+ПРИМЕР 2: Export Workflow
+
+❌ ЗАГЛУШКА:
+```python
+def export_workflow(self):
+    """Export workflow (TODO: implement)."""
+    QMessageBox.information(
+        self, "Export",
+        "Export feature coming soon!"
+    )
+```
+
+✅ ПОЛНАЯ РЕАЛИЗАЦИЯ:
+```python
+def export_workflow(self):
+    """Export current workflow to Python or JSON."""
+    if not self.current_workflow:
+        QMessageBox.warning(
+            self, "Export",
+            "No workflow to export.\nCreate a workflow first."
+        )
+        return
+
+    try:
+        # Диалог выбора файла
+        filename, filter_type = QFileDialog.getSaveFileName(
+            self,
+            "Export Workflow",
+            f"{self.current_workflow.name}.py",
+            "Python Files (*.py);;JSON Files (*.json);;All Files (*.*)"
+        )
+
+        if not filename:
+            return  # Пользователь отменил
+
+        # Определяем формат по расширению
+        if filename.endswith('.json'):
+            # Экспорт в JSON
+            workflow_data = self.current_workflow.to_dict()
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(workflow_data, f, indent=2, ensure_ascii=False)
+            logger.info(f"Workflow exported to JSON: {filename}")
+
+        else:
+            # Экспорт в Python
+            python_code = self.current_workflow.to_python()
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write(python_code)
+            logger.info(f"Workflow exported to Python: {filename}")
+
+        # Показываем успех
+        QMessageBox.information(
+            self, "Export Successful",
+            f"Workflow exported to:\n{filename}"
+        )
+
+        # Логируем в консоль
+        self.console_panel.append(f"✅ Exported to {filename}")
+
+    except PermissionError:
+        QMessageBox.critical(
+            self, "Export Failed",
+            f"Permission denied:\n{filename}\n\nChoose different location."
+        )
+    except Exception as e:
+        logger.error(f"Export failed: {e}", exc_info=True)
+        QMessageBox.critical(
+            self, "Export Failed",
+            f"Failed to export workflow:\n{e}"
+        )
+```
+
+═══════════════════════════════════════════════════════════════
+
+ПРИМЕР 3: Inspector Parameter Fields
+
+❌ ЗАГЛУШКА:
+```python
+def create_parameter_field(self, param_name, param_value):
+    """Create field for parameter (TODO)."""
+    pass
+```
+
+✅ ПОЛНАЯ РЕАЛИЗАЦИЯ:
+```python
+def create_parameter_field(self, param_name, param_value):
+    """Create appropriate input field based on parameter type."""
+    try:
+        # Определяем тип параметра
+        param_type = self.get_parameter_type(param_name, param_value)
+
+        label = QLabel(param_name.replace('_', ' ').title() + ":")
+
+        if param_type == 'bool':
+            # Checkbox для boolean
+            widget = QCheckBox()
+            widget.setChecked(bool(param_value))
+            widget.stateChanged.connect(
+                lambda state: self.on_parameter_changed(param_name, bool(state))
+            )
+
+        elif param_type == 'choice':
+            # ComboBox для выбора из списка
+            widget = QComboBox()
+            choices = self.get_parameter_choices(param_name)
+            widget.addItems(choices)
+            if param_value in choices:
+                widget.setCurrentText(str(param_value))
+            widget.currentTextChanged.connect(
+                lambda value: self.on_parameter_changed(param_name, value)
+            )
+
+        elif param_type == 'multiline':
+            # TextEdit для длинного текста
+            widget = QTextEdit()
+            widget.setPlainText(str(param_value) if param_value else "")
+            widget.setMaximumHeight(100)
+            widget.textChanged.connect(
+                lambda: self.on_parameter_changed(
+                    param_name,
+                    widget.toPlainText()
+                )
+            )
+
+        elif param_type == 'number':
+            # SpinBox для чисел
+            widget = QSpinBox()
+            widget.setRange(0, 999999)
+            widget.setValue(int(param_value) if param_value else 0)
+            widget.valueChanged.connect(
+                lambda value: self.on_parameter_changed(param_name, value)
+            )
+
+        else:
+            # LineEdit для обычного текста (по умолчанию)
+            widget = QLineEdit()
+            widget.setText(str(param_value) if param_value else "")
+            widget.textChanged.connect(
+                lambda text: self.on_parameter_changed(param_name, text)
+            )
+            widget.setPlaceholderText(f"Enter {param_name}...")
+
+        # Добавляем в layout
+        self.params_layout.addRow(label, widget)
+
+        # Сохраняем ссылку на виджет
+        self.param_widgets[param_name] = widget
+
+        logger.debug(f"Created {param_type} field for parameter '{param_name}'")
+
+    except Exception as e:
+        logger.error(f"Failed to create parameter field '{param_name}': {e}")
+        # Fallback: простой текстовый ввод
+        widget = QLineEdit(str(param_value) if param_value else "")
+        self.params_layout.addRow(QLabel(param_name + ":"), widget)
+
+def on_parameter_changed(self, param_name, new_value):
+    """Handle parameter value change."""
+    try:
+        if not self.current_block:
+            return
+
+        # Обновляем значение в блоке
+        self.current_block.set_parameter(param_name, new_value)
+
+        # Логируем изменение
+        logger.debug(f"Parameter '{param_name}' changed to: {new_value}")
+
+        # Уведомляем об изменении
+        if hasattr(self, 'parameter_changed'):
+            self.parameter_changed.emit(param_name, new_value)
+
+    except Exception as e:
+        logger.error(f"Failed to update parameter '{param_name}': {e}")
+```
+
+═══════════════════════════════════════════════════════════════
+
+ПРИМЕР 4: Plugin System
+
+❌ ЗАГЛУШКА:
+```python
+def initialize(self):
+    """Initialize the plugin."""
+    pass
+
+def shutdown(self):
+    """Shutdown the plugin and cleanup resources."""
+    pass
+```
+
+✅ ПОЛНАЯ РЕАЛИЗАЦИЯ:
+```python
+def initialize(self):
+    """Initialize the plugin and load its resources."""
+    try:
+        logger.info(f"Initializing plugin: {self.name}")
+
+        # Загружаем конфигурацию плагина
+        self.load_config()
+
+        # Инициализируем ресурсы
+        self.load_resources()
+
+        # Регистрируем блоки плагина
+        self.register_blocks()
+
+        # Подключаем обработчики событий
+        self.connect_signals()
+
+        self.initialized = True
+        logger.info(f"Plugin '{self.name}' initialized successfully")
+
+    except Exception as e:
+        logger.error(f"Failed to initialize plugin '{self.name}': {e}")
+        self.initialized = False
+        raise
+
+def shutdown(self):
+    """Shutdown the plugin and cleanup resources."""
+    try:
+        if not self.initialized:
+            return
+
+        logger.info(f"Shutting down plugin: {self.name}")
+
+        # Отключаем обработчики
+        self.disconnect_signals()
+
+        # Отменяем регистрацию блоков
+        self.unregister_blocks()
+
+        # Освобождаем ресурсы
+        self.cleanup_resources()
+
+        # Сохраняем состояние
+        self.save_state()
+
+        self.initialized = False
+        logger.info(f"Plugin '{self.name}' shut down successfully")
+
+    except Exception as e:
+        logger.error(f"Error shutting down plugin '{self.name}': {e}")
+```
+
+═══════════════════════════════════════════════════════════════
+ШАГ 4: КОНКРЕТНЫЕ ПРОБЛЕМЫ В ПРОЕКТЕ
+═══════════════════════════════════════════════════════════════
+
+Исправь эти известные проблемы:
+
+1. **Inspector Parameter Fields**
+   ФАЙЛ: octomaster/gui/widgets/inspector_panel.py
+   ПРОБЛЕМА: Поля параметров не работают (TODO)
+   РЕАЛИЗУЙ: Полные методы создания и обновления полей
+
+2. **Settings Dialog**
+   ФАЙЛ: octomaster/gui/main_window.py → show_settings()
+   ПРОБЛЕМА: Показывает заглушку вместо диалога
+   РЕАЛИЗУЙ: Полный диалог настроек с сохранением
+
+3. **Export Workflow**
+   ФАЙЛ: octomaster/gui/main_window.py → export_workflow()
+   ПРОБЛЕМА: Заглушка вместо экспорта
+   РЕАЛИЗУЙ: Экспорт в Python и JSON
+
+4. **Plugin System**
+   ФАЙЛ: src/core/plugin_manager.py
+   ПРОБЛЕМА: Методы с pass
+   РЕАЛИЗУЙ: Полную систему плагинов
+
+5. **Block Execution**
+   ФАЙЛ: src/nodes/base_block.py
+   ПРОБЛЕМА: Пустые методы execute()
+   РЕАЛИЗУЙ: Реальное выполнение для каждого блока
+
+6. **Connection Validation**
+   ФАЙЛ: src/nodes/connection.py
+   ПРОБЛЕМА: Проверки с pass
+   РЕАЛИЗУЙ: Полную валидацию соединений
+
+═══════════════════════════════════════════════════════════════
+ШАГ 5: ТРЕБОВАНИЯ К РЕАЛИЗАЦИИ
+═══════════════════════════════════════════════════════════════
+
+Для КАЖДОЙ функции:
+
+✅ **1. Обработка ошибок**
+```python
+try:
+    # твой код
+except SpecificException as e:
+    logger.error(f"Specific error: {e}")
+    # обработка
+except Exception as e:
+    logger.error(f"Unexpected error: {e}", exc_info=True)
+    # общая обработка
+```
+
+✅ **2. Логирование**
+```python
+logger.info("Starting operation...")
+logger.debug(f"Parameters: {params}")
+logger.info("Operation completed successfully")
+```
+
+✅ **3. Валидация входных данных**
+```python
+if not value:
+    raise ValueError("Value cannot be empty")
+if not isinstance(value, ExpectedType):
+    raise TypeError(f"Expected {ExpectedType}, got {type(value)}")
+```
+
+✅ **4. Документация**
+```python
+def function_name(param1, param2):
+    """
+    Clear description of what function does.
+
+    Args:
+        param1: Description
+        param2: Description
+
+    Returns:
+        Description of return value
+
+    Raises:
+        ValueError: When param is invalid
+    """
+```
+
+✅ **5. Возврат значений**
+- НЕ оставляй функции без return если они должны что-то возвращать
+- Возвращай None явно если функция ничего не возвращает
+- Проверяй типы возвращаемых значений
+
+✅ **6. GUI элементы**
+- Подключай ВСЕ сигналы (.connect())
+- Добавляй placeholders в поля ввода
+- Обрабатывай отмену пользователем (Cancel в диалогах)
+- Показывай progress bars для долгих операций
+
+═══════════════════════════════════════════════════════════════
+ШАГ 6: ПРОВЕРКА РЕЗУЛЬТАТА
+═══════════════════════════════════════════════════════════════
+
+После реализации, проверь:
+
+1. **Нет заглушек**
+   ```bash
+   grep -r "TODO\|FIXME" . --include="*.py" | wc -l
+   # Должно быть 0
+   ```
+
+2. **Нет пустых pass** (кроме абстрактных классов)
+   ```bash
+   grep -r "^\s*pass\s*$" . --include="*.py"
+   # Только в abstract base classes
+   ```
+
+3. **Все сигналы подключены**
+   - Каждый QAction имеет .triggered.connect()
+   - Каждый QPushButton имеет .clicked.connect()
+   - Каждый custom signal используется
+
+4. **Все методы реализованы**
+   - Нет NotImplementedError
+   - Нет функций с только docstring и pass
+   - Все методы возвращают значение
+
+5. **Код компилируется**
+   ```bash
+   python -m py_compile *.py
+   ```
+
+═══════════════════════════════════════════════════════════════
+РЕЗУЛЬТАТ КОТОРЫЙ НУЖЕН
+═══════════════════════════════════════════════════════════════
+
+После твоей работы:
+
+✅ ВСЕ функции полностью реализованы
+✅ НЕТ TODO, FIXME, заглушек
+✅ НЕТ пустых pass (кроме abstract classes)
+✅ НЕТ "coming soon", "not implemented"
+✅ ВСЕ поля параметров работают
+✅ ВСЕ кнопки делают что должны
+✅ ВСЕ диалоги полностью функциональны
+✅ ВСЯ обработка ошибок на месте
+✅ ВСЁ логирование добавлено
+✅ Программа работает на 100%
+
+═══════════════════════════════════════════════════════════════
+ВАЖНО
+═══════════════════════════════════════════════════════════════
+
+- Не удаляй функционал - только ДОПОЛНИ его
+- Сохраняй существующий стиль кода
+- Используй уже существующие классы и паттерны
+- Добавляй комментарии где логика сложная
+- Тестируй что код компилируется
+- НЕ оставляй незаконченный код
+
+═══════════════════════════════════════════════════════════════
+НАЧНИ РАБОТУ ПРЯМО СЕЙЧАС
+═══════════════════════════════════════════════════════════════
+
+1. Найди ВСЕ TODO и заглушки в проекте
+2. Создай список что нужно исправить
+3. Реализуй КАЖДУЮ функцию полностью
+4. Проверь что ничего не пропущено
+5. Убедись что код компилируется
+
+ПОКАЖИ МНЕ:
+- Список всех найденных заглушек
+- План реализации
+- Затем - исправленный код для каждого файла
+
+ДЕЛАЙ ВСЁ ПОЛНОСТЬЮ, НЕ ОСТАНАВЛИВАЙСЯ НА ПОЛПУТИ!
+
+═══════════════════════════════════════════════════════════════
+КОНЕЦ ПРОМПТА
+═══════════════════════════════════════════════════════════════
