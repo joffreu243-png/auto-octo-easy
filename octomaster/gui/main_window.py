@@ -798,6 +798,11 @@ class MainWindow(QMainWindow):
 
         if self.recorder:
             actions = self.recorder.stop()
+
+            # Handle case where actions might be None
+            if actions is None:
+                actions = []
+
             self.console_widget.append_text(f"⏹️ Recording stopped. Captured {len(actions)} actions\n")
 
             # Add recorded blocks to workflow

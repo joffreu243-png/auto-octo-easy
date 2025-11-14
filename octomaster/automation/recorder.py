@@ -89,11 +89,14 @@ class Recorder:
         self._trigger_callbacks("recording_started")
 
     def stop(self):
-        """Stop recording."""
+        """Stop recording and return recorded actions."""
         self.is_recording = False
         logger.info(f"Recording stopped. Recorded {len(self.recorded_actions)} actions")
 
         self._trigger_callbacks("recording_stopped")
+
+        # Return the recorded actions
+        return self.recorded_actions
 
     def record_action(
         self,
