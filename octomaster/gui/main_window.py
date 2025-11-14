@@ -67,6 +67,13 @@ class MainWindow(QMainWindow):
         # Recorder
         self.recorder: Recorder = None
 
+        # Clipboard for cut/copy/paste
+        self.clipboard_blocks = []
+
+        # Recent files list (max 10)
+        self.recent_files: list[Path] = []
+        self._load_recent_files()
+
         self.setWindowTitle(f"{config.app_name} v{config.app_version}")
         self.setGeometry(100, 100, 1600, 900)
 
@@ -653,18 +660,92 @@ class MainWindow(QMainWindow):
 
     def cut_blocks(self):
         """Cut selected blocks."""
-        # TODO: Implement cut
-        self.statusBar().showMessage("Cut")
+        try:
+            # First copy the blocks
+            self.copy_blocks()
+
+            # Then delete them
+            selected_items = self.visual_editor.scene.selectedItems()
+            if not selected_items:
+                self.statusBar().showMessage("No blocks selected to cut")
+                return
+
+            # Remove blocks from workflow and scene
+            for item in selected_items:
+                if hasattr(item, 'block'):
+                    block_id = item.block.id
+                    self.current_workflow.remove_block(block_id)
+                    self.visual_editor.scene.removeItem(item)
+
+            self.is_modified = True
+            self.statusBar().showMessage(f"Cut {len(selected_items)} block(s)")
+            self.console_widget.append_text(f"✂️ Cut {len(selected_items)} block(s)\n")
+            logger.info(f"Cut {len(selected_items)} blocks")
+
+        except Exception as e:
+            logger.error(f"Failed to cut blocks: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to cut blocks:\n{e}")
 
     def copy_blocks(self):
         """Copy selected blocks."""
-        # TODO: Implement copy
-        self.statusBar().showMessage("Copy")
+        try:
+            selected_items = self.visual_editor.scene.selectedItems()
+            if not selected_items:
+                self.statusBar().showMessage("No blocks selected to copy")
+                return
+
+            # Clear clipboard
+            self.clipboard_blocks = []
+
+            # Copy block data
+            for item in selected_items:
+                if hasattr(item, 'block'):
+                    # Clone the block
+                    block_copy = item.block.clone()
+                    self.clipboard_blocks.append(block_copy)
+
+            self.statusBar().showMessage(f"Copied {len(self.clipboard_blocks)} block(s)")
+            self.console_widget.append_text(f"📋 Copied {len(self.clipboard_blocks)} block(s)\n")
+            logger.info(f"Copied {len(self.clipboard_blocks)} blocks")
+
+        except Exception as e:
+            logger.error(f"Failed to copy blocks: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to copy blocks:\n{e}")
 
     def paste_blocks(self):
-        """Paste blocks."""
-        # TODO: Implement paste
-        self.statusBar().showMessage("Paste")
+        """Paste blocks from clipboard."""
+        try:
+            if not self.clipboard_blocks:
+                self.statusBar().showMessage("Nothing to paste (clipboard empty)")
+                return
+
+            # Paste blocks at offset position
+            offset_x = 50
+            offset_y = 50
+
+            pasted_count = 0
+            for block in self.clipboard_blocks:
+                # Create new block from clipboard data
+                new_block = block.clone()
+                new_block.x += offset_x
+                new_block.y += offset_y
+
+                # Add to workflow
+                self.current_workflow.add_block(new_block)
+
+                # Add to visual editor
+                self.visual_editor.add_block_to_scene(new_block)
+
+                pasted_count += 1
+
+            self.is_modified = True
+            self.statusBar().showMessage(f"Pasted {pasted_count} block(s)")
+            self.console_widget.append_text(f"📌 Pasted {pasted_count} block(s)\n")
+            logger.info(f"Pasted {pasted_count} blocks")
+
+        except Exception as e:
+            logger.error(f"Failed to paste blocks: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to paste blocks:\n{e}")
 
     def select_all_blocks(self):
         """Select all blocks."""
@@ -743,22 +824,72 @@ class MainWindow(QMainWindow):
 
     def stop_workflow(self):
         """Stop workflow execution."""
-        if self.executor:
-            # TODO: Implement proper stop
+        try:
+            if self.executor:
+                # Cancel executor if it has a cancel method
+                if hasattr(self.executor, 'cancel'):
+                    self.executor.cancel()
+                elif hasattr(self.executor, 'stop'):
+                    self.executor.stop()
+
+                # Close browser if needed
+                if hasattr(self.executor, 'browser') and self.executor.browser:
+                    try:
+                        if hasattr(self.executor.browser, 'close'):
+                            asyncio.create_task(self.executor.browser.close())
+                    except Exception as e:
+                        logger.warning(f"Failed to close browser: {e}")
+
             self.is_running = False
             self.update_run_state(False)
-            self.console_widget.append_text("\n⏹️ Workflow stopped\n")
-            logger.info("Workflow stopped")
+            self.console_widget.append_text("\n⏹️ Workflow stopped by user\n")
+            self.statusBar().showMessage("Workflow stopped")
+            logger.info("Workflow stopped by user")
+
+        except Exception as e:
+            logger.error(f"Error stopping workflow: {e}")
+            self.is_running = False
+            self.update_run_state(False)
 
     def on_debug_step(self):
-        """Handle debug step."""
-        # TODO: Implement step debugging
-        pass
+        """Handle debug step - execute next block only."""
+        try:
+            if not self.executor:
+                logger.warning("No executor available for stepping")
+                return
+
+            # Tell executor to execute one step
+            if hasattr(self.executor, 'step'):
+                self.executor.step()
+                self.console_widget.append_text("⏯️ Debug: Stepped to next block\n")
+                logger.debug("Debug step executed")
+            else:
+                logger.warning("Executor does not support stepping")
+                self.console_widget.append_text("⚠️ Debug stepping not supported by current executor\n")
+
+        except Exception as e:
+            logger.error(f"Failed to execute debug step: {e}")
+            self.console_widget.append_text(f"❌ Debug step failed: {e}\n")
 
     def on_debug_continue(self):
-        """Handle debug continue."""
-        # TODO: Implement continue
-        pass
+        """Handle debug continue - resume execution."""
+        try:
+            if not self.executor:
+                logger.warning("No executor available for continue")
+                return
+
+            # Tell executor to continue execution
+            if hasattr(self.executor, 'continue_execution'):
+                self.executor.continue_execution()
+                self.console_widget.append_text("▶️ Debug: Continuing execution\n")
+                logger.debug("Debug continue executed")
+            else:
+                logger.warning("Executor does not support continue")
+                self.console_widget.append_text("⚠️ Debug continue not supported by current executor\n")
+
+        except Exception as e:
+            logger.error(f"Failed to continue debug: {e}")
+            self.console_widget.append_text(f"❌ Debug continue failed: {e}\n")
 
     # ===== RECORDING =====
 
@@ -806,9 +937,27 @@ class MainWindow(QMainWindow):
             self.console_widget.append_text(f"⏹️ Recording stopped. Captured {len(actions)} actions\n")
 
             # Add recorded blocks to workflow
-            for action in actions:
-                # TODO: Convert action to block and add to workflow
-                pass
+            if actions:
+                try:
+                    for action in actions:
+                        # Convert action to block
+                        block = action.to_block()
+
+                        # Add to workflow
+                        self.current_workflow.add_block(block)
+
+                        # Add to visual editor
+                        self.visual_editor.add_block_to_scene(block)
+
+                    self.is_modified = True
+                    self.console_widget.append_text(f"✅ Added {len(actions)} recorded blocks to workflow\n")
+                    logger.info(f"Converted {len(actions)} recorded actions to blocks")
+
+                except Exception as e:
+                    logger.error(f"Failed to convert recorded actions to blocks: {e}")
+                    self.console_widget.append_text(f"❌ Failed to convert actions: {e}\n")
+            else:
+                self.console_widget.append_text("No actions recorded\n")
 
         self.recording_stopped.emit()
         logger.info("Recording stopped")
@@ -875,17 +1024,92 @@ class MainWindow(QMainWindow):
         panel.setVisible(not panel.isVisible())
 
     def add_recent_file(self, file_path: Path):
-        """Add file to recent files."""
-        # TODO: Implement recent files tracking
-        pass
+        """Add file to recent files list."""
+        try:
+            file_path = Path(file_path).resolve()
+
+            # Remove if already exists (to move to top)
+            if file_path in self.recent_files:
+                self.recent_files.remove(file_path)
+
+            # Add to front of list
+            self.recent_files.insert(0, file_path)
+
+            # Keep only 10 most recent
+            self.recent_files = self.recent_files[:10]
+
+            # Save to file
+            self._save_recent_files()
+
+            # Update menu
+            self.update_recent_files_menu()
+
+            logger.debug(f"Added to recent files: {file_path}")
+
+        except Exception as e:
+            logger.error(f"Failed to add recent file: {e}")
 
     def update_recent_files_menu(self):
         """Update recent files menu."""
         self.recent_menu.clear()
-        # TODO: Add recent files
-        no_recent = QAction("No recent files", self)
-        no_recent.setEnabled(False)
-        self.recent_menu.addAction(no_recent)
+
+        if not self.recent_files:
+            no_recent = QAction("No recent files", self)
+            no_recent.setEnabled(False)
+            self.recent_menu.addAction(no_recent)
+            return
+
+        # Add recent files
+        for file_path in self.recent_files:
+            if file_path.exists():
+                action = QAction(file_path.name, self)
+                action.setStatusTip(str(file_path))
+                action.triggered.connect(lambda checked, fp=file_path: self.load_workflow(fp))
+                self.recent_menu.addAction(action)
+
+        # Add separator and clear option
+        self.recent_menu.addSeparator()
+        clear_action = QAction("Clear Recent Files", self)
+        clear_action.triggered.connect(self._clear_recent_files)
+        self.recent_menu.addAction(clear_action)
+
+    def _load_recent_files(self):
+        """Load recent files list from config."""
+        try:
+            recent_file = self.config.project_root / ".recent_files"
+            if recent_file.exists():
+                with open(recent_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            path = Path(line)
+                            if path.exists():
+                                self.recent_files.append(path)
+
+                logger.debug(f"Loaded {len(self.recent_files)} recent files")
+
+        except Exception as e:
+            logger.error(f"Failed to load recent files: {e}")
+
+    def _save_recent_files(self):
+        """Save recent files list to config."""
+        try:
+            recent_file = self.config.project_root / ".recent_files"
+            with open(recent_file, 'w', encoding='utf-8') as f:
+                for file_path in self.recent_files:
+                    f.write(str(file_path) + '\n')
+
+            logger.debug(f"Saved {len(self.recent_files)} recent files")
+
+        except Exception as e:
+            logger.error(f"Failed to save recent files: {e}")
+
+    def _clear_recent_files(self):
+        """Clear recent files list."""
+        self.recent_files.clear()
+        self._save_recent_files()
+        self.update_recent_files_menu()
+        logger.info("Recent files cleared")
 
     def take_screenshot(self):
         """Take screenshot of the workflow."""
@@ -1104,9 +1328,51 @@ class MainWindow(QMainWindow):
 
     def show_welcome_message(self):
         """Show welcome message on first run."""
-        # Check if first run
-        # TODO: Track first run
-        pass
+        try:
+            # Check if first run
+            first_run_file = self.config.project_root / ".first_run"
+
+            if not first_run_file.exists():
+                # This is the first run
+                msg = QMessageBox(self)
+                msg.setWindowTitle("Welcome to OctoMaster Pro!")
+                msg.setTextFormat(Qt.TextFormat.RichText)
+                msg.setText("""
+                <h2>🎉 Welcome to OctoMaster Pro!</h2>
+
+                <p><b>Thank you for choosing OctoMaster Pro!</b></p>
+
+                <p>OctoMaster Pro is a powerful browser automation platform with:</p>
+                <ul>
+                    <li>✨ Visual workflow builder</li>
+                    <li>🎬 Action recorder</li>
+                    <li>🤖 AI-powered automation</li>
+                    <li>📚 Template library</li>
+                    <li>🐛 Full debugging support</li>
+                </ul>
+
+                <h3>Quick Start:</h3>
+                <ol>
+                    <li>Press <b>F1</b> for Quick Start Guide</li>
+                    <li>Try <b>File → New from Template</b> to get started quickly</li>
+                    <li>Or create your first workflow with <b>Ctrl+N</b></li>
+                </ol>
+
+                <p><b>Need help?</b> Check <b>Help → Documentation</b> or press <b>F1</b></p>
+                """)
+                msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+                msg.exec()
+
+                # Mark as not first run
+                try:
+                    first_run_file.touch()
+                except Exception as e:
+                    logger.warning(f"Failed to create first run marker: {e}")
+
+                logger.info("Showed welcome message (first run)")
+
+        except Exception as e:
+            logger.error(f"Failed to show welcome message: {e}")
 
     def show_about(self):
         """Show about dialog."""
