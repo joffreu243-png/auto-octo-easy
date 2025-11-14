@@ -74,6 +74,11 @@ def main():
     setup_logging()
     setup_environment()
 
+    # Disable GPU acceleration for WebEngine (fixes crashes in VMs)
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--disable-gpu --disable-software-rasterizer --no-sandbox")
+    os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
+    os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
+
     # Create Qt Application
     app = QApplication(sys.argv)
     app.setApplicationName("OctoMaster Pro")
