@@ -478,8 +478,9 @@ class BrowserPanel(QWidget):
         copy_menu.addAction("CSS Selector", lambda: self.copy_selector())
         copy_menu.addAction("Element Text", lambda: self.copy_text())
 
-        # Show menu at cursor
-        menu.exec(self.mapFromGlobal(self.cursor().pos()))
+        # Show menu at cursor position
+        from PyQt6.QtGui import QCursor
+        menu.exec(QCursor.pos())
 
     def add_block_action(self, action_type):
         """Add block based on action type."""

@@ -7,6 +7,7 @@ PyQt6-WebEngine>=6.6.0
 PyQt6-Charts>=6.6.0
 PyQtGraph>=0.13.0
 QScintilla>=2.14.0
+qasync>=0.24.0
 
 # ===== Browser Automation =====
 playwright>=1.40.0

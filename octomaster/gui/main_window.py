@@ -767,11 +767,9 @@ class MainWindow(QMainWindow):
         try:
             self.is_running = True
             self.update_run_state(True)
-            self.console_widget.append_text("="*50 + "\n")
-            self.console_widget.append_text("▶️ Running workflow...\n")
-            self.console_widget.append_text("="*50 + "\n")
 
             # Create executor
+            self.console_widget.append_text("📦 Creating workflow executor...\n")
             self.executor = WorkflowExecutor(self.current_workflow)
 
             # Set callbacks
@@ -781,22 +779,49 @@ class MainWindow(QMainWindow):
             self.executor.on_workflow_complete = self.on_workflow_complete
 
             # Execute
+            self.console_widget.append_text("🌐 Launching Chromium browser...\n")
+            self.statusBar().showMessage("🌐 Launching browser...")
+
             success = await self.executor.execute(headless=False)
 
             if success:
-                self.console_widget.append_text("\n✓ Workflow completed successfully!\n")
-                QMessageBox.information(self, "Success", "Workflow completed successfully!")
+                self.console_widget.append_text("\n" + "="*50 + "\n")
+                self.console_widget.append_text("✅ Workflow completed successfully!\n")
+                self.console_widget.append_text("="*50 + "\n")
+                self.statusBar().showMessage("✅ Workflow completed successfully", 5000)
+                QMessageBox.information(
+                    self,
+                    "Success",
+                    f"Workflow '{self.current_workflow.name}' completed successfully!\n\n"
+                    f"Blocks executed: {len(self.current_workflow.blocks)}\n"
+                    f"Check the console for details."
+                )
             else:
-                self.console_widget.append_text("\n✗ Workflow failed!\n")
-                QMessageBox.warning(self, "Failed", "Workflow execution failed!")
+                self.console_widget.append_text("\n" + "="*50 + "\n")
+                self.console_widget.append_text("❌ Workflow execution failed!\n")
+                self.console_widget.append_text("="*50 + "\n")
+                self.statusBar().showMessage("❌ Workflow failed", 5000)
+                QMessageBox.warning(
+                    self,
+                    "Failed",
+                    "Workflow execution failed!\n\nCheck the console for error details."
+                )
 
         except Exception as e:
-            logger.error(f"Workflow execution error: {e}")
-            self.console_widget.append_text(f"\n✗ ERROR: {e}\n")
-            QMessageBox.critical(self, "Error", f"Workflow execution error:\n{e}")
+            logger.error(f"Workflow execution error: {e}", exc_info=True)
+            self.console_widget.append_text("\n" + "="*50 + "\n")
+            self.console_widget.append_text(f"❌ ERROR: {e}\n")
+            self.console_widget.append_text("="*50 + "\n")
+            self.statusBar().showMessage(f"❌ Error: {e}", 5000)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Workflow execution error:\n\n{str(e)}\n\nCheck the console and logs for more details."
+            )
         finally:
             self.is_running = False
             self.update_run_state(False)
+            self.console_widget.append_text("\n🏁 Workflow execution finished.\n\n")
 
     def run_workflow(self):
         """Run the current workflow."""
@@ -810,14 +835,16 @@ class MainWindow(QMainWindow):
 
         logger.info("Running workflow...")
 
-        # Run in event loop
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        # Show feedback to user
+        self.statusBar().showMessage("🚀 Starting workflow execution...")
+        self.console_widget.append_text("=" * 50 + "\n")
+        self.console_widget.append_text("🚀 Starting workflow execution...\n")
+        self.console_widget.append_text(f"📋 Workflow: {self.current_workflow.name}\n")
+        self.console_widget.append_text(f"📦 Blocks: {len(self.current_workflow.blocks)}\n")
+        self.console_widget.append_text("=" * 50 + "\n")
 
-        loop.create_task(self.run_workflow_async())
+        # Create async task using qasync-compatible event loop
+        asyncio.create_task(self.run_workflow_async())
 
     def debug_workflow(self):
         """Run workflow in debug mode."""

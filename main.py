@@ -17,6 +17,8 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from loguru import logger
 from dotenv import load_dotenv
+import asyncio
+import qasync
 
 from octomaster.gui.main_window import MainWindow
 from octomaster.core.config import Config
@@ -79,7 +81,7 @@ def main():
     os.environ.setdefault("QT_XCB_GL_INTEGRATION", "none")
     os.environ.setdefault("LIBGL_ALWAYS_SOFTWARE", "1")
 
-    # Create Qt Application
+    # Create Qt Application with qasync event loop
     app = QApplication(sys.argv)
     app.setApplicationName("OctoMaster Pro")
     app.setApplicationVersion("0.1.0-alpha")
@@ -89,6 +91,10 @@ def main():
     # Set app-wide settings
     # Note: AA_UseHighDpiPixmaps is deprecated in PyQt6 (enabled by default)
     # app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+
+    # Setup qasync event loop for asyncio integration
+    loop = qasync.QEventLoop(app)
+    asyncio.set_event_loop(loop)
 
     # Load configuration
     config = Config()
@@ -101,11 +107,17 @@ def main():
     logger.info("OctoMaster Pro is ready!")
     logger.info("=" * 60)
 
-    # Run application
-    exit_code = app.exec()
+    # Run application with asyncio support
+    with loop:
+        try:
+            exit_code = loop.run_forever()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            loop.close()
 
     logger.info("OctoMaster Pro shutting down...")
-    sys.exit(exit_code)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
