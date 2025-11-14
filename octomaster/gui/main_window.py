@@ -383,6 +383,13 @@ class MainWindow(QMainWindow):
 
         help_menu.addSeparator()
 
+        update_action = QAction("🔄 Check for &Updates...", self)
+        update_action.setStatusTip("Check for application updates")
+        update_action.triggered.connect(self.check_for_updates)
+        help_menu.addAction(update_action)
+
+        help_menu.addSeparator()
+
         about_action = QAction("&About", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
@@ -1456,6 +1463,24 @@ class MainWindow(QMainWindow):
                <a href="https://docs.octomaster.pro">Documentation</a></p>
             """,
         )
+
+    def check_for_updates(self):
+        """Check for application updates."""
+        try:
+            from octomaster.gui.dialogs.update_dialog import UpdateDialog
+
+            dialog = UpdateDialog(self.config.project_root, self)
+            dialog.exec()
+
+        except Exception as e:
+            logger.error(f"Failed to check for updates: {e}")
+            QMessageBox.critical(
+                self,
+                "Update Check Failed",
+                f"Failed to check for updates:\n\n{str(e)}\n\n"
+                "You can manually update using Git:\n"
+                "git pull origin <branch-name>"
+            )
 
     # ===== CALLBACKS =====
 
