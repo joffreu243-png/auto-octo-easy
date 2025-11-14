@@ -95,6 +95,7 @@ class VisualEditorScene(QGraphicsScene):
     block_added = pyqtSignal(Block)
     block_removed = pyqtSignal(str)
     connection_added = pyqtSignal(str, str)
+    node_selected = pyqtSignal(object)  # Emits selected block/node
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -207,6 +208,7 @@ class VisualEditor(QWidget):
     """Visual workflow editor - main canvas for creating workflows."""
 
     workflow_changed = pyqtSignal(Workflow)
+    block_selected = pyqtSignal(object)  # Emits selected block
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -263,6 +265,8 @@ class VisualEditor(QWidget):
         # Connect signals
         self.scene.block_added.connect(self.on_block_added)
         self.scene.block_removed.connect(self.on_block_removed)
+        self.scene.selectionChanged.connect(self.on_selection_changed)
+        self.scene.node_selected.connect(self.on_node_selected)
 
     def set_workflow(self, workflow: Workflow):
         """Set the current workflow."""
@@ -433,3 +437,34 @@ class VisualEditor(QWidget):
             item = self.block_items[block_id]
             self.scene.removeItem(item)
             del self.block_items[block_id]
+
+    def on_selection_changed(self):
+        """Handle selection changed in scene."""
+        selected_items = self.scene.selectedItems()
+
+        if selected_items:
+            # Get first selected item
+            item = selected_items[0]
+
+            # Check if it's a BlockGraphicsItem
+            if isinstance(item, BlockGraphicsItem) and hasattr(item, 'block'):
+                logger.debug(f"Block selected: {item.block.name}")
+                self.block_selected.emit(item.block)
+            # Check if it has a node attribute (from GraphicsNode)
+            elif hasattr(item, 'node') and item.node:
+                logger.debug(f"Node selected: {getattr(item.node, 'name', 'Unknown')}")
+                self.block_selected.emit(item.node)
+        else:
+            # Nothing selected - clear inspector
+            logger.debug("Selection cleared")
+            self.block_selected.emit(None)
+
+    def on_node_selected(self, node):
+        """Handle node selected signal from scene.
+
+        Args:
+            node: Selected node/block
+        """
+        if node:
+            logger.debug(f"Node selected via signal: {getattr(node, 'name', 'Unknown')}")
+            self.block_selected.emit(node)

@@ -449,6 +449,14 @@ class MainWindow(QMainWindow):
         # Visual editor signals
         self.visual_editor.workflow_changed.connect(self.on_workflow_changed)
 
+        # Connect visual editor to inspector panel
+        if hasattr(self.visual_editor, 'block_selected') and hasattr(self.inspector_panel, 'set_block'):
+            try:
+                self.visual_editor.block_selected.connect(self.inspector_panel.set_block)
+                logger.info("✅ Connected inspector to block selection")
+            except Exception as e:
+                logger.error(f"❌ Failed to connect inspector: {e}")
+
         # Variables widget signals
         self.variables_widget.variable_changed.connect(self.on_variable_changed)
 
@@ -456,6 +464,46 @@ class MainWindow(QMainWindow):
         self.debugger_widget.step_requested.connect(self.on_debug_step)
         self.debugger_widget.continue_requested.connect(self.on_debug_continue)
         self.debugger_widget.stop_requested.connect(self.stop_workflow)
+
+        # Verify all connections
+        self.verify_connections()
+
+    def verify_connections(self):
+        """Verify all signal connections are properly set up."""
+        logger.info("🔍 Verifying signal connections...")
+
+        connections = {
+            "Visual Editor → Inspector": (
+                hasattr(self.visual_editor, 'block_selected') and
+                hasattr(self.inspector_panel, 'set_block')
+            ),
+            "Visual Editor → Workflow Changed": (
+                hasattr(self.visual_editor, 'workflow_changed')
+            ),
+            "Variables Widget → Variable Changed": (
+                hasattr(self.variables_widget, 'variable_changed')
+            ),
+            "Debugger → Step/Continue/Stop": (
+                hasattr(self.debugger_widget, 'step_requested') and
+                hasattr(self.debugger_widget, 'continue_requested') and
+                hasattr(self.debugger_widget, 'stop_requested')
+            ),
+        }
+
+        all_connected = True
+        for name, is_connected in connections.items():
+            if is_connected:
+                logger.debug(f"  ✅ {name}")
+            else:
+                logger.warning(f"  ❌ {name} - Missing signal!")
+                all_connected = False
+
+        if all_connected:
+            logger.info("✅ All signal connections verified successfully")
+        else:
+            logger.warning("⚠️ Some signal connections are missing")
+
+        return all_connected
 
     # ===== WORKFLOW OPERATIONS =====
 
@@ -835,9 +883,55 @@ class MainWindow(QMainWindow):
         self.recent_menu.addAction(no_recent)
 
     def take_screenshot(self):
-        """Take screenshot."""
-        # TODO: Implement screenshot
-        self.statusBar().showMessage("Screenshot taken")
+        """Take screenshot of the workflow."""
+        try:
+            # Get file path from user
+            file_path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Screenshot",
+                str(self.config.projects_dir / "workflow_screenshot.png"),
+                "PNG Images (*.png);;JPEG Images (*.jpg *.jpeg);;All Files (*)"
+            )
+
+            if not file_path:
+                return
+
+            # Grab the visual editor scene
+            scene = self.visual_editor.scene
+            view = self.visual_editor.view
+
+            # Get scene rect
+            scene_rect = scene.sceneRect()
+
+            # Create pixmap
+            from PyQt6.QtGui import QPixmap
+            pixmap = QPixmap(int(scene_rect.width()), int(scene_rect.height()))
+            pixmap.fill(Qt.GlobalColor.transparent)
+
+            # Render scene to pixmap
+            from PyQt6.QtGui import QPainter
+            painter = QPainter(pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            scene.render(painter)
+            painter.end()
+
+            # Save pixmap
+            if pixmap.save(file_path):
+                self.statusBar().showMessage(f"Screenshot saved: {Path(file_path).name}")
+                self.console_widget.append_text(f"📸 Screenshot saved: {Path(file_path).name}\n")
+                logger.info(f"Screenshot saved to {file_path}")
+                QMessageBox.information(
+                    self,
+                    "Screenshot Saved",
+                    f"Screenshot saved to:\n{file_path}"
+                )
+            else:
+                raise Exception("Failed to save screenshot")
+
+        except Exception as e:
+            logger.error(f"Failed to take screenshot: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to take screenshot:\n{e}")
+            self.statusBar().showMessage("Screenshot failed")
 
     # ===== DIALOGS =====
 

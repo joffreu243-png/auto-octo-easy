@@ -120,6 +120,7 @@ class GraphicsNode(QGraphicsItem):
 
         self.title = title
         self.node_type = node_type
+        self.node = None  # Reference to BaseBlock for selection
         self.width = 180
         self.height = 100
         self.title_height = 30
@@ -263,3 +264,18 @@ class GraphicsNode(QGraphicsItem):
         if self.height < min_height:
             self.height = min_height
             self.update()
+
+    def mousePressEvent(self, event) -> None:
+        """Handle mouse press event.
+
+        Args:
+            event: Mouse event
+        """
+        super().mousePressEvent(event)
+
+        # Emit selection signal if node is set and scene exists
+        if self.node and self.scene():
+            scene = self.scene()
+            # Emit node_selected signal if scene has it
+            if hasattr(scene, 'node_selected'):
+                scene.node_selected.emit(self.node)

@@ -61,6 +61,11 @@ class InspectorPanel(QWidget):
 
     def set_block(self, block: Block):
         """Set the block to inspect."""
+        if block:
+            logger.info(f"📋 Inspector: showing block '{block.name}' (type: {block.type.value})")
+        else:
+            logger.debug("📋 Inspector: cleared selection")
+
         self.current_block = block
         self.refresh()
 
