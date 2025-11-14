@@ -116,8 +116,38 @@ class InspectorPanel(QWidget):
         params_group = QGroupBox("Parameters")
         params_layout = QFormLayout()
 
-        # Add parameter editors based on block type
-        # TODO: Implement dynamic parameter editors
+        # Add parameter editors dynamically based on block's parameters
+        if hasattr(block, 'parameters') and block.parameters:
+            for param_name, param_value in block.parameters.items():
+                # Create editor based on value type
+                if isinstance(param_value, bool):
+                    # Boolean parameter - use checkbox
+                    param_editor = QCheckBox()
+                    param_editor.setChecked(param_value)
+                    param_editor.toggled.connect(
+                        lambda checked, name=param_name: self.on_parameter_changed(name, checked)
+                    )
+                elif isinstance(param_value, (int, float)):
+                    # Numeric parameter - use line edit with numeric validation
+                    param_editor = QLineEdit(str(param_value))
+                    param_editor.textChanged.connect(
+                        lambda text, name=param_name: self.on_parameter_changed(name, self._parse_number(text))
+                    )
+                else:
+                    # String parameter (default) - use line edit
+                    param_editor = QLineEdit(str(param_value) if param_value is not None else "")
+                    param_editor.textChanged.connect(
+                        lambda text, name=param_name: self.on_parameter_changed(name, text)
+                    )
+
+                # Add to form with nice label
+                label = param_name.replace('_', ' ').title() + ":"
+                params_layout.addRow(label, param_editor)
+        else:
+            # No parameters - show placeholder
+            no_params_label = QLabel("No parameters for this block type")
+            no_params_label.setStyleSheet("color: gray; font-style: italic;")
+            params_layout.addRow(no_params_label)
 
         params_group.setLayout(params_layout)
         self.content_layout.addWidget(params_group)
@@ -143,3 +173,23 @@ class InspectorPanel(QWidget):
             setattr(self.current_block, property_name, value)
             self.property_changed.emit(self.current_block.id, property_name, value)
             logger.debug(f"Property changed: {property_name} = {value}")
+
+    def on_parameter_changed(self, param_name: str, value):
+        """Handle parameter change."""
+        if self.current_block:
+            # Update parameter in block
+            self.current_block.set_parameter(param_name, value)
+            self.property_changed.emit(self.current_block.id, f"param.{param_name}", value)
+            logger.debug(f"Parameter changed: {param_name} = {value}")
+
+    def _parse_number(self, text: str):
+        """Parse text to number (int or float)."""
+        try:
+            # Try integer first
+            if '.' not in text:
+                return int(text)
+            else:
+                return float(text)
+        except (ValueError, AttributeError):
+            # If parsing fails, return text as is
+            return text

@@ -349,11 +349,57 @@ class VisualEditor(QWidget):
         block.x = 100
         block.y = 100
 
+        # Initialize default parameters based on block type
+        self._initialize_block_parameters(block)
+
         self.workflow.add_block(block)
         self.add_block_to_scene(block)
 
         self.workflow_changed.emit(self.workflow)
         logger.info(f"Added block: {block.name}")
+
+    def _initialize_block_parameters(self, block: Block):
+        """Initialize default parameters for a block based on its type."""
+        if block.type == BlockType.OPEN_URL:
+            block.set_parameter('url', 'https://example.com')
+            block.set_parameter('timeout', 30)
+        elif block.type == BlockType.CLICK:
+            block.set_parameter('selector', '')
+            block.set_parameter('button', 'left')
+            block.set_parameter('delay', 0)
+        elif block.type == BlockType.TYPE_TEXT:
+            block.set_parameter('selector', '')
+            block.set_parameter('text', '')
+            block.set_parameter('delay', 0)
+        elif block.type == BlockType.WAIT_TIME:
+            block.set_parameter('seconds', 1)
+        elif block.type == BlockType.WAIT_FOR_ELEMENT:
+            block.set_parameter('selector', '')
+            block.set_parameter('timeout', 30)
+        elif block.type == BlockType.GET_TEXT:
+            block.set_parameter('selector', '')
+            block.set_parameter('variable_name', 'text')
+        elif block.type == BlockType.GET_ATTRIBUTE:
+            block.set_parameter('selector', '')
+            block.set_parameter('attribute', 'value')
+            block.set_parameter('variable_name', 'attr')
+        elif block.type == BlockType.SCREENSHOT:
+            block.set_parameter('filename', 'screenshot.png')
+            block.set_parameter('fullpage', False)
+        elif block.type == BlockType.SCROLL:
+            block.set_parameter('x', 0)
+            block.set_parameter('y', 500)
+        elif block.type == BlockType.HOVER:
+            block.set_parameter('selector', '')
+        elif block.type == BlockType.SELECT:
+            block.set_parameter('selector', '')
+            block.set_parameter('value', '')
+        elif block.type == BlockType.DOUBLE_CLICK:
+            block.set_parameter('selector', '')
+            block.set_parameter('delay', 0)
+        elif block.type == BlockType.RIGHT_CLICK:
+            block.set_parameter('selector', '')
+        # Add more block types as needed
 
     def zoom_in(self):
         """Zoom in the view."""
