@@ -74,6 +74,9 @@ class MainWindow(QMainWindow):
         self.recent_files: list[Path] = []
         self._load_recent_files()
 
+        # Octo Browser settings
+        self.octo_settings = self._load_octo_settings()
+
         self.setWindowTitle(f"{config.app_name} v{config.app_version}")
         self.setGeometry(100, 100, 1600, 900)
 
@@ -217,6 +220,12 @@ class MainWindow(QMainWindow):
         export_python_action.triggered.connect(self.export_as_python)
         export_menu.addAction(export_python_action)
 
+        export_octo_action = QAction("Export with 🌐 Octo Browser...", self)
+        export_octo_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
+        export_octo_action.setStatusTip("Export as Python script with Octo Browser integration")
+        export_octo_action.triggered.connect(self.export_with_octo)
+        export_menu.addAction(export_octo_action)
+
         export_json_action = QAction("Export as &JSON...", self)
         export_json_action.triggered.connect(self.export_as_json)
         export_menu.addAction(export_json_action)
@@ -342,6 +351,12 @@ class MainWindow(QMainWindow):
         settings_action.setShortcut(QKeySequence.StandardKey.Preferences)
         settings_action.triggered.connect(self.show_settings)
         tools_menu.addAction(settings_action)
+
+        octo_settings_action = QAction("🌐 Octo Browser Settings...", self)
+        octo_settings_action.setShortcut(QKeySequence("Ctrl+Alt+O"))
+        octo_settings_action.setStatusTip("Configure Octo Browser API connection")
+        octo_settings_action.triggered.connect(self.show_octo_settings)
+        tools_menu.addAction(octo_settings_action)
 
         tools_menu.addSeparator()
 
@@ -1546,6 +1561,117 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("✓ Workflow completed successfully")
         else:
             self.statusBar().showMessage("✗ Workflow failed")
+
+    # ===== OCTO BROWSER INTEGRATION =====
+
+    def _load_octo_settings(self) -> dict:
+        """Load Octo Browser settings from config."""
+        try:
+            octo_config_file = self.config.project_root / ".octo_settings"
+            if octo_config_file.exists():
+                import json
+                with open(octo_config_file, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                    logger.info("Loaded Octo Browser settings")
+                    return settings
+        except Exception as e:
+            logger.error(f"Failed to load Octo settings: {e}")
+
+        return {}
+
+    def _save_octo_settings(self, settings: dict):
+        """Save Octo Browser settings to config."""
+        try:
+            import json
+            octo_config_file = self.config.project_root / ".octo_settings"
+            with open(octo_config_file, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+            logger.info("Saved Octo Browser settings")
+        except Exception as e:
+            logger.error(f"Failed to save Octo settings: {e}")
+
+    def show_octo_settings(self):
+        """Show Octo Browser settings dialog."""
+        try:
+            from octomaster.gui.dialogs.octo_settings_dialog import OctoSettingsDialog
+
+            dialog = OctoSettingsDialog(self, self.octo_settings)
+
+            # Connect signal to save settings
+            dialog.settings_saved.connect(self._on_octo_settings_saved)
+
+            dialog.exec()
+
+        except Exception as e:
+            logger.error(f"Failed to show Octo settings dialog: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to open Octo Browser settings:\n\n{str(e)}"
+            )
+
+    def _on_octo_settings_saved(self, settings: dict):
+        """Handle Octo settings saved."""
+        self.octo_settings = settings
+        self._save_octo_settings(settings)
+        logger.info("Octo Browser settings updated")
+
+    def export_with_octo(self):
+        """Export workflow with Octo Browser integration."""
+        # Check if we have Octo settings
+        if not self.octo_settings.get('api_token'):
+            reply = QMessageBox.question(
+                self,
+                "Octo Settings Required",
+                "Octo Browser API is not configured.\n\n"
+                "Would you like to configure it now?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                self.show_octo_settings()
+                # Check again after settings
+                if not self.octo_settings.get('api_token'):
+                    return
+            else:
+                return
+
+        # Check if workflow has blocks
+        if len(self.current_workflow.blocks) == 0:
+            QMessageBox.warning(
+                self,
+                "Empty Workflow",
+                "Workflow is empty! Add some blocks first."
+            )
+            return
+
+        try:
+            from octomaster.gui.dialogs.octo_export_dialog import OctoExportDialog
+
+            dialog = OctoExportDialog(
+                workflow=self.current_workflow,
+                octo_settings=self.octo_settings,
+                parent=self
+            )
+
+            # Connect signal
+            dialog.export_completed.connect(self._on_octo_export_completed)
+
+            dialog.exec()
+
+        except Exception as e:
+            logger.error(f"Failed to show Octo export dialog: {e}")
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to open Octo export dialog:\n\n{str(e)}"
+            )
+
+    def _on_octo_export_completed(self, file_path: str):
+        """Handle Octo export completed."""
+        self.console_widget.append_text(f"✅ Exported to: {file_path}\n")
+        self.statusBar().showMessage(f"Exported with Octo Browser: {Path(file_path).name}", 5000)
+        logger.info(f"Workflow exported with Octo Browser to: {file_path}")
 
     # ===== CLOSE EVENT =====
 
