@@ -30,8 +30,9 @@ from PyQt6.QtGui import (
 )
 from loguru import logger
 
-from octomaster.core.workflow import Workflow
+from octomaster.core.workflow import Workflow, Connection
 from octomaster.core.block import Block, BlockType
+from octomaster.gui.widgets.connection_item import ConnectionGraphicsItem
 
 
 class BlockGraphicsItem(QGraphicsRectItem):
@@ -211,6 +212,7 @@ class VisualEditor(QWidget):
         super().__init__(parent)
         self.workflow = Workflow()
         self.block_items = {}  # block_id -> BlockGraphicsItem
+        self.connection_items = {}  # connection_id -> ConnectionGraphicsItem
 
         self.setup_ui()
 
@@ -272,18 +274,39 @@ class VisualEditor(QWidget):
         # Clear scene
         self.scene.clear()
         self.block_items.clear()
+        self.connection_items.clear()
 
         # Add blocks
         for block in self.workflow.blocks:
             self.add_block_to_scene(block)
 
-        # TODO: Add connections
+        # Add connections
+        for connection in self.workflow.connections:
+            self.add_connection_to_scene(connection)
 
     def add_block_to_scene(self, block: Block):
         """Add a block to the scene."""
         item = BlockGraphicsItem(block)
         self.scene.addItem(item)
         self.block_items[block.id] = item
+
+    def add_connection_to_scene(self, connection: Connection):
+        """Add a connection to the scene."""
+        source_item = self.block_items.get(connection.source_block_id)
+        target_item = self.block_items.get(connection.target_block_id)
+
+        if source_item and target_item:
+            conn_item = ConnectionGraphicsItem(connection, source_item, target_item)
+            self.scene.addItem(conn_item)
+            self.connection_items[connection.id] = conn_item
+
+            # Update connection when blocks move
+            source_item.setFlag(
+                QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True
+            )
+            target_item.setFlag(
+                QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges, True
+            )
 
     def show_add_block_menu(self):
         """Show menu to add blocks."""
