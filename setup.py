@@ -63,7 +63,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "octomaster=src.core.app:main",
+            "octomaster=main:main",
             "octomaster-cli=src.cli.main:cli_main",
         ],
     },
